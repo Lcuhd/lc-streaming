@@ -1,0 +1,6 @@
+{
+  "name": "LC Player",
+  "description": "Player para Android TV, Google TV e TV Box com identificação e ativação via LC Admin.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

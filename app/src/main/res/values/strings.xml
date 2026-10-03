@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">LC Player</string>
+    <string name="activation_title">Identificação do Dispositivo</string>
+    <string name="device_id_label">Device ID</string>
+    <string name="device_key_label">KEY</string>
+    <string name="status_label">Status</string>
+    <string name="activation_notice">Cadastre este dispositivo no LC Admin para continuar.</string>
+    <string name="activation_instructions">Use os dados acima no painel LC Admin para associar sua assinatura e liberar o acesso aos conteúdos da sua conta.</string>
+    
+    <!-- Status strings -->
+    <string name="status_waiting_activation">Aguardando ativação</string>
+    <string name="status_active">Ativo</string>
+    <string name="status_blocked">Bloqueado</string>
+    <string name="status_expired">Vencido</string>
+    <string name="status_connection_error">Erro de conexão</string>
+    
+    <!-- Action buttons -->
+    <string name="btn_refresh_status">Verificar Ativação</string>
+    <string name="btn_device_info">Informações do Sistema</string>
+    <string name="btn_copy_credentials">Copiar Códigos</string>
+    <string name="copied_to_clipboard">Device ID e KEY copiados para a área de transferência</string>
+    <string name="checking_status">Consultando status local...</string>
+    <string name="system_info_title">Informações do Sistema</string>
+    <string name="btn_close">Fechar</string>
+    <string name="app_version">Versão</string>
+    <string name="app_architecture">Arquitetura</string>
+</resources>
