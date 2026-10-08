@@ -14,6 +14,7 @@ val TvPrimaryBlue = Color(0xFF0084FF)
 val TvSecondaryBlue = Color(0xFF00C6FF)
 val TvFocusBorder = Color(0xFF00D2FF)
 val TvFocusGlow = Color(0x6600C6FF)
+val TvAccentRed = Color(0xFFFF3D71)
 
 // Text
 val TvTextPrimary = Color(0xFFF8FAFC)

@@ -3,12 +3,12 @@ package com.example.domain.model
 /**
  * Status de ativação do dispositivo no sistema LC Admin.
  *
- * Estados previstos na arquitetura:
- * - WAITING_ACTIVATION (Aguardando ativação - status inicial padrão)
- * - ACTIVE (Ativo)
- * - BLOCKED (Bloqueado)
- * - EXPIRED (Vencido)
- * - CONNECTION_ERROR (Erro de conexão)
+ * Estados previstos na arquitetura conforme especificação LC Admin:
+ * - WAITING_ACTIVATION ("Aguardando ativação")
+ * - ACTIVE ("Dispositivo ativado")
+ * - BLOCKED ("Dispositivo bloqueado")
+ * - EXPIRED ("Acesso vencido")
+ * - CONNECTION_ERROR ("Erro de conexão")
  */
 enum class ActivationStatus(
     val title: String,
@@ -19,15 +19,15 @@ enum class ActivationStatus(
         description = "Cadastre este dispositivo no LC Admin para continuar."
     ),
     ACTIVE(
-        title = "Ativo",
+        title = "Dispositivo ativado",
         description = "Dispositivo ativado com sucesso no LC Admin."
     ),
     BLOCKED(
-        title = "Bloqueado",
+        title = "Dispositivo bloqueado",
         description = "Dispositivo bloqueado pelo administrador."
     ),
     EXPIRED(
-        title = "Vencido",
+        title = "Acesso vencido",
         description = "Período de acesso expirado. Renove sua assinatura."
     ),
     CONNECTION_ERROR(

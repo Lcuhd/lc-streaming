@@ -10,8 +10,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -33,8 +36,10 @@ import com.example.ui.theme.TvFocusGlow
  * - Ampliação visual suave ao receber foco (Scale)
  * - Borda com brilho azul/ciano característico de players de TV
  * - Sombra/elevação destacada
+ * - Rolagem automática da viewport para o item focado (Bring Into View)
  * - Compatibilidade direta com botões D-Pad (OK/Enter/Center) e toque
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.tvFocusable(
     enabled: Boolean = true,
@@ -49,6 +54,16 @@ fun Modifier.tvFocusable(
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+
+    LaunchedEffect(isFocused) {
+        if (isFocused && enabled) {
+            try {
+                bringIntoViewRequester.bringIntoView()
+            } catch (_: Exception) {
+            }
+        }
+    }
 
     val scale by animateFloatAsState(
         targetValue = if (isFocused && enabled) focusedScale else 1.0f,
@@ -75,6 +90,7 @@ fun Modifier.tvFocusable(
     )
 
     return this
+        .bringIntoViewRequester(bringIntoViewRequester)
         .scale(scale)
         .shadow(
             elevation = elevation,

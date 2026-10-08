@@ -2,21 +2,42 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.data.generator.DeviceIdentifierGenerator
+import com.example.data.local.DeviceIdentityStorage
 import com.example.data.local.dao.DeviceInfoDao
 import com.example.data.local.entity.DeviceInfoEntity
+import com.example.data.remote.LcAdminApiClient
+import com.example.data.remote.LcAdminDeleteResponse
+import com.example.data.remote.LcAdminListsResponse
+import com.example.data.remote.LcAdminResponse
+import com.example.data.remote.XtreamAuthClient
+import com.example.data.remote.XtreamCategoryClient
+import com.example.data.remote.XtreamLiveStreamsClient
 import com.example.domain.model.ActivationStatus
+import com.example.domain.model.CategoryLoadResult
+import com.example.domain.model.CategoryType
 import com.example.domain.model.DeviceCredentials
+import com.example.domain.model.DeviceListModel
+import com.example.domain.model.ListStatus
+import com.example.domain.model.LiveStreamsLoadResult
+import com.example.domain.model.XtreamAuthResult
+import com.example.domain.model.XtreamCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 /**
- * Repositório responsável por gerenciar a identidade e persistência do dispositivo.
+ * Repositório responsável por gerenciar a identidade, persistência do dispositivo
+ * e comunicação com o LC Admin e servidores de conteúdo Xtream.
  */
 class DeviceRepository(
     private val context: Context,
-    private val deviceInfoDao: DeviceInfoDao
+    private val deviceInfoDao: DeviceInfoDao,
+    private val apiClient: LcAdminApiClient = LcAdminApiClient(),
+    private val xtreamAuthClient: XtreamAuthClient = XtreamAuthClient(),
+    private val xtreamCategoryClient: XtreamCategoryClient = XtreamCategoryClient(),
+    private val xtreamLiveStreamsClient: XtreamLiveStreamsClient = XtreamLiveStreamsClient(),
+    private val identityStorage: DeviceIdentityStorage = DeviceIdentityStorage(context, deviceInfoDao)
 ) {
 
     /**
@@ -36,49 +57,127 @@ class DeviceRepository(
         }
 
     /**
-     * Inicializa as credenciais na primeira abertura se ainda não existirem.
-     * Caso já existam no banco local, mantém exatamente os mesmos dados persistidos.
+     * Retorna as credenciais persistidas através do armazenamento dual (SharedPreferences e Room).
+     *
+     * Regras estritas:
+     * - Se existir um Device ID e/ou KEY já persistidos, reutiliza-os SEMPRE.
+     * - NUNCA sobrescreve valores persistidos com recálculos determinísticos.
+     * - Somente gera nova identidade na primeiríssima execução em dispositivo limpo.
+     * - Nunca regenera em abertura, refresh, mudança de rede ou atualização normal.
      */
-    suspend fun getOrCreateDeviceCredentials(): DeviceCredentials = withContext(Dispatchers.IO) {
-        val existing = deviceInfoDao.getDeviceInfoDirect()
-        if (existing != null) {
-            DeviceCredentials(
-                deviceId = existing.deviceId,
-                key = existing.activationKey,
-                status = ActivationStatus.fromStorage(existing.status),
-                createdAt = existing.createdAt,
-                lastCheckedAt = existing.lastCheckedAt
-            )
-        } else {
-            // Primeira inicialização: gera novos identificadores exclusivos
-            val newDeviceId = DeviceIdentifierGenerator.generateDeviceId(context)
-            val newKey = DeviceIdentifierGenerator.generateKey()
-            val initialStatus = ActivationStatus.WAITING_ACTIVATION
+    suspend fun getOrCreateDeviceCredentials(): DeviceCredentials =
+        identityStorage.getOrInitializeCredentials()
 
-            val newEntity = DeviceInfoEntity(
-                id = 1,
-                deviceId = newDeviceId,
-                activationKey = newKey,
-                status = initialStatus.name,
-                createdAt = System.currentTimeMillis(),
-                lastCheckedAt = System.currentTimeMillis()
-            )
+    /**
+     * Realiza a chamada HTTP real ao LC Admin utilizando o Device ID e KEY persistentes.
+     * Atualiza o status no armazenamento local sincronizado caso retorne com sucesso.
+     */
+    suspend fun checkDeviceStatusOnline(deviceId: String, key: String): LcAdminResponse = withContext(Dispatchers.IO) {
+        val response = apiClient.checkDeviceStatus(deviceId, key)
+        val now = System.currentTimeMillis()
 
-            deviceInfoDao.insertOrUpdate(newEntity)
+        when (response) {
+            is LcAdminResponse.Success -> {
+                // Atualiza o status sincronizado em ambas as camadas de persistência
+                identityStorage.updateStatus(
+                    status = response.activationStatus,
+                    lastCheckedAt = now
+                )
+            }
+            is LcAdminResponse.Error -> {
+                // Caso ocorra falha de rede/timeout, registra timestamp da tentativa
+                if (response.isNetworkOrTimeout) {
+                    identityStorage.updateStatus(
+                        status = ActivationStatus.CONNECTION_ERROR,
+                        lastCheckedAt = now
+                    )
+                }
+            }
+        }
 
-            DeviceCredentials(
-                deviceId = newDeviceId,
-                key = newKey,
-                status = initialStatus,
-                createdAt = newEntity.createdAt,
-                lastCheckedAt = newEntity.lastCheckedAt
+        response
+    }
+
+    /**
+     * Consulta as listas vinculadas ao dispositivo no LC Admin.
+     * Preserva Device ID e KEY atuais.
+     */
+    suspend fun fetchDeviceListsOnline(deviceId: String, key: String): LcAdminListsResponse = withContext(Dispatchers.IO) {
+        val response = apiClient.fetchDeviceLists(deviceId, key)
+        val now = System.currentTimeMillis()
+
+        if (response is LcAdminListsResponse.Success) {
+            deviceInfoDao.updateStatus(
+                status = response.deviceStatus.name,
+                lastCheckedAt = now
             )
         }
+
+        response
+    }
+
+    /**
+     * Exclui uma lista vinculada ao dispositivo através do endpoint /delete-device-list.
+     * Envia device_id, key e list_id. Preserva Device ID e KEY atuais.
+     */
+    suspend fun deleteDeviceListOnline(deviceId: String, key: String, listId: String): LcAdminDeleteResponse = withContext(Dispatchers.IO) {
+        apiClient.deleteDeviceList(deviceId, key, listId)
+    }
+
+    /**
+     * Testa a autenticação direta com o servidor Xtream usando as credenciais da lista.
+     * Somente permitido para listas ativas.
+     */
+    suspend fun testXtreamAuthenticationOnline(list: DeviceListModel): XtreamAuthResult = withContext(Dispatchers.IO) {
+        if (list.status != ListStatus.ACTIVE) {
+            val label = list.status.label
+            return@withContext XtreamAuthResult.NotAllowed("Lista $label. Teste de conexão não permitido.")
+        }
+        xtreamAuthClient.testAuthentication(list.dns, list.username, list.password)
+    }
+
+    /**
+     * Consulta as categorias reais disponíveis no servidor Xtream para a lista ativa selecionada.
+     * Requisito 2: Somente permitido se a lista estiver com status 'active'.
+     * Categorias de TV ao vivo, Filmes e Séries são tratadas separadamente.
+     */
+    suspend fun fetchCategoriesOnline(list: DeviceListModel, type: CategoryType): CategoryLoadResult = withContext(Dispatchers.IO) {
+        if (list.status != ListStatus.ACTIVE) {
+            val label = list.status.label
+            return@withContext CategoryLoadResult.Error(
+                displayMessage = "Lista $label. Consulta de categorias não permitida.",
+                type = type
+            )
+        }
+        xtreamCategoryClient.fetchCategories(list.dns, list.username, list.password, type)
+    }
+
+    /**
+     * Consulta os canais reais pertencentes a uma categoria de TV ao vivo no servidor Xtream.
+     * Somente permitido para listas ativas.
+     */
+    suspend fun fetchLiveStreamsForCategoryOnline(
+        list: DeviceListModel,
+        category: XtreamCategory
+    ): LiveStreamsLoadResult = withContext(Dispatchers.IO) {
+        if (list.status != ListStatus.ACTIVE) {
+            val label = list.status.label
+            return@withContext LiveStreamsLoadResult.Error(
+                displayMessage = "Lista $label. Consulta não permitida.",
+                categoryId = category.categoryId
+            )
+        }
+        xtreamLiveStreamsClient.fetchLiveStreamsForCategory(
+            dns = list.dns,
+            username = list.username,
+            password = list.password,
+            categoryId = category.categoryId,
+            categoryName = category.categoryName
+        )
     }
 
     /**
      * Atualiza o timestamp de verificação local.
-     * Preparado para quando a API LC Admin for integrada na próxima etapa.
      */
     suspend fun refreshLocalStatus() = withContext(Dispatchers.IO) {
         val current = deviceInfoDao.getDeviceInfoDirect() ?: return@withContext

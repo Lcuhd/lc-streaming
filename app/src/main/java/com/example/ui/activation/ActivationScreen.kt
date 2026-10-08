@@ -235,6 +235,139 @@ fun ActivationScreen(
                         // Mensagem de instrução obrigatória solicitada
                         InstructionNoticeCard()
 
+                        // Feedback visual da última tentativa de verificação
+                        AnimatedVisibility(
+                            visible = uiState.lastFeedbackMessage != null && !uiState.isChecking,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            uiState.lastFeedbackMessage?.let { msg ->
+                                val isSuccess = uiState.status == ActivationStatus.ACTIVE
+                                val isWaiting = uiState.status == ActivationStatus.WAITING_ACTIVATION
+                                val isBlockedOrExpired = uiState.status == ActivationStatus.BLOCKED || uiState.status == ActivationStatus.EXPIRED
+
+                                val badgeBg = when {
+                                    isSuccess -> StatusActiveBg
+                                    isWaiting -> StatusWaitingBg
+                                    isBlockedOrExpired -> StatusBlockedBg
+                                    else -> StatusErrorBg
+                                }
+                                val badgeBorder = when {
+                                    isSuccess -> StatusActiveBorder
+                                    isWaiting -> StatusWaitingBorder
+                                    isBlockedOrExpired -> StatusBlockedBorder
+                                    else -> StatusErrorBorder
+                                }
+                                val badgeText = when {
+                                    isSuccess -> StatusActiveText
+                                    isWaiting -> StatusWaitingText
+                                    isBlockedOrExpired -> StatusBlockedText
+                                    else -> StatusErrorText
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(badgeBg)
+                                        .border(1.dp, badgeBorder, RoundedCornerShape(10.dp))
+                                        .padding(vertical = 10.dp, horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = badgeText,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = msg,
+                                        color = badgeText,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        // Indicador animado durante a requisição de verificação
+                        AnimatedVisibility(
+                            visible = uiState.isChecking,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0x220084FF))
+                                    .border(1.dp, TvFocusBorder, RoundedCornerShape(10.dp))
+                                    .padding(vertical = 10.dp, horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = TvSecondaryBlue,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Consultando status no LC Admin...",
+                                    color = TvSecondaryBlue,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+
+                        // Botão de acesso direto às Minhas Listas quando o dispositivo estiver ativo
+                        AnimatedVisibility(
+                            visible = uiState.status == ActivationStatus.ACTIVE,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(TvPrimaryBlue, TvSecondaryBlue)
+                                        )
+                                    )
+                                    .tvFocusable(
+                                        shape = RoundedCornerShape(12.dp),
+                                        focusBorderColor = Color.White,
+                                        focusedScale = 1.04f,
+                                        onClick = { viewModel.navigateToSection(AppScreenSection.MY_LISTS) }
+                                    )
+                                    .testTag("btn_go_to_my_lists"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tv,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        text = "Acessar Minhas Listas",
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
                         // Ações D-Pad e Controle Remoto
                         ActionButtonsRow(
                             primaryFocusRequester = primaryFocusRequester,
@@ -535,10 +668,11 @@ private fun ActionButtonsRow(
     ) {
         // Botão Principal: Verificar Ativação (com foco inicial na TV)
         TvActionButton(
-            text = if (isChecking) stringResource(R.string.checking_status) else stringResource(R.string.btn_refresh_status),
+            text = if (isChecking) "Verificando..." else stringResource(R.string.btn_refresh_status),
             icon = Icons.Default.Refresh,
             isPrimary = true,
             isLoading = isChecking,
+            enabled = !isChecking,
             onClick = onVerifyClick,
             modifier = Modifier
                 .weight(1.3f)
@@ -551,6 +685,7 @@ private fun ActionButtonsRow(
             text = stringResource(R.string.btn_copy_credentials),
             icon = Icons.Default.ContentCopy,
             isPrimary = false,
+            enabled = !isChecking,
             onClick = onCopyClick,
             modifier = Modifier
                 .weight(1f)
@@ -562,6 +697,7 @@ private fun ActionButtonsRow(
             text = stringResource(R.string.btn_device_info),
             icon = Icons.Default.Info,
             isPrimary = false,
+            enabled = !isChecking,
             onClick = onInfoClick,
             modifier = Modifier
                 .weight(1.1f)
@@ -577,10 +713,19 @@ private fun TvActionButton(
     isPrimary: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    enabled: Boolean = true
 ) {
-    val baseBgColor = if (isPrimary) TvPrimaryBlue else TvSurfaceVariant
-    val contentColor = if (isPrimary) Color.White else TvTextPrimary
+    val baseBgColor = when {
+        !enabled -> Color(0xFF1B2433)
+        isPrimary -> TvPrimaryBlue
+        else -> TvSurfaceVariant
+    }
+    val contentColor = when {
+        !enabled -> TvTextMuted
+        isPrimary -> Color.White
+        else -> TvTextPrimary
+    }
 
     Box(
         modifier = modifier
@@ -588,10 +733,11 @@ private fun TvActionButton(
             .clip(RoundedCornerShape(12.dp))
             .background(baseBgColor)
             .tvFocusable(
+                enabled = enabled,
                 shape = RoundedCornerShape(12.dp),
                 focusBorderColor = TvFocusBorder,
-                focusedScale = 1.05f,
-                onClick = onClick
+                focusedScale = if (enabled) 1.05f else 1.0f,
+                onClick = if (enabled) onClick else null
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -602,7 +748,7 @@ private fun TvActionButton(
         ) {
             if (isLoading) {
                 CircularProgressIndicator(
-                    color = Color.White,
+                    color = TvSecondaryBlue,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(18.dp)
                 )
