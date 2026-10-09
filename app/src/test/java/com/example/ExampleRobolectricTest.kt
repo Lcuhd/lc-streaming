@@ -509,6 +509,73 @@ class ExampleRobolectricTest {
         assertEquals("List ID preserved", "list_123", closedState.listId)
         assertEquals("Categories list preserved", 1, closedState.liveCategories.size)
     }
+
+    @Test
+    fun `verify XtreamEpgClient base64 decoder decodes encoded strings and preserves plain text`() {
+        val plainText = "Jornal Nacional"
+        assertEquals("Jornal Nacional", com.example.data.remote.XtreamEpgClient.decodeBase64IfNeeded(plainText))
+
+        // "Jornal da Noite" in Base64 is "Sm9ybmFsIGRhIE5vaXRl"
+        val base64Text = "Sm9ybmFsIGRhIE5vaXRl"
+        assertEquals("Jornal da Noite", com.example.data.remote.XtreamEpgClient.decodeBase64IfNeeded(base64Text))
+
+        assertEquals("", com.example.data.remote.XtreamEpgClient.decodeBase64IfNeeded(null))
+        assertEquals("", com.example.data.remote.XtreamEpgClient.decodeBase64IfNeeded(""))
+    }
+
+    @Test
+    fun `verify buildShortEpgUrl constructs url safely with action get_short_epg and limit 2`() {
+        val url = com.example.data.remote.XtreamEpgClient.buildShortEpgUrl(
+            dns = "http://servidor.net:8080/",
+            username = "user test",
+            password = "pass#123",
+            streamId = "1050",
+            limit = 2
+        )
+
+        assertTrue(url.startsWith("http://servidor.net:8080/player_api.php?"))
+        assertTrue(url.contains("action=get_short_epg"))
+        assertTrue(url.contains("stream_id=1050"))
+        assertTrue(url.contains("limit=2"))
+        assertTrue(url.contains("username=user+test"))
+    }
+
+    @Test
+    fun `verify timestamp and date formatting converts UTC timestamp to local HH mm`() {
+        // 1746885600 -> May 10, 2025 14:00:00 UTC
+        val formatted = com.example.data.remote.XtreamEpgClient.formatTimestampToLocalTime(1746885600L)
+        assertNotNull(formatted)
+        assertTrue(formatted!!.matches(Regex("^\\d{2}:\\d{2}\$")))
+
+        val parsedDate = com.example.data.remote.XtreamEpgClient.parseServerDateToLocalTime("2025-05-10 14:00:00")
+        assertNotNull(parsedDate)
+        assertTrue(parsedDate!!.matches(Regex("^\\d{2}:\\d{2}\$")))
+    }
+
+    @Test
+    fun `verify EpgProgram timeRangeFormatted and ShortEpgState properties`() {
+        val program = com.example.domain.model.EpgProgram(
+            id = "10",
+            title = "Tela Quente",
+            description = "Filme de Ação",
+            startTimeFormatted = "22:30",
+            endTimeFormatted = "00:15",
+            isNowPlaying = true
+        )
+
+        assertEquals("22:30 - 00:15", program.timeRangeFormatted)
+
+        val state = com.example.domain.model.ShortEpgState(
+            streamId = "1050",
+            currentProgram = program,
+            nextProgram = null,
+            isLoading = false
+        )
+
+        assertTrue(state.hasEpg)
+        assertEquals("1050", state.streamId)
+        assertEquals("Tela Quente", state.currentProgram?.title)
+    }
 }
 
 

@@ -70,7 +70,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.domain.model.LivePlayerState
+import com.example.domain.model.ShortEpgState
 import com.example.ui.components.tvFocusable
+import com.example.ui.theme.StatusActiveText
 import com.example.ui.theme.TvAccentRed
 import com.example.ui.theme.TvFocusBorder
 import com.example.ui.theme.TvSecondaryBlue
@@ -478,6 +480,7 @@ fun LivePlayerScreen(
                 // Barra Inferior de Informações e Controles
                 PlayerBottomControls(
                     channel = playerState.channel,
+                    epgState = playerState.epgState,
                     isPlaying = isPlaying,
                     onPlayPauseToggle = {
                         if (exoPlayer.isPlaying) {
@@ -594,6 +597,7 @@ private fun PlayerTopBar(
 @Composable
 private fun PlayerBottomControls(
     channel: com.example.domain.model.LiveStreamChannel,
+    epgState: ShortEpgState? = null,
     isPlaying: Boolean,
     onPlayPauseToggle: () -> Unit,
     onRefresh: () -> Unit,
@@ -610,7 +614,7 @@ private fun PlayerBottomControls(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Logo + Número + Nome do canal
+        // Logo + Número + Nome do canal + EPG
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -666,12 +670,41 @@ private fun PlayerBottomControls(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Pressione OK para pausar / reproduzir",
-                    color = TvTextMuted,
-                    fontSize = 12.sp
-                )
+
+                when {
+                    epgState?.isLoading == true -> {
+                        Text(
+                            text = "Carregando programação...",
+                            color = TvTextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                    epgState?.hasEpg == true -> {
+                        val current = epgState.currentProgram
+                        val next = epgState.nextProgram
+                        val currentTitle = current?.title.orEmpty()
+                        val currentTimes = current?.timeRangeFormatted?.let { " ($it)" }.orEmpty()
+                        val nextInfo = next?.let { " • Próximo: ${it.title}${if (!it.startTimeFormatted.isNullOrBlank()) " (${it.startTimeFormatted})" else ""}" }.orEmpty()
+
+                        Text(
+                            text = "$currentTitle$currentTimes$nextInfo",
+                            color = StatusActiveText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = "Programação indisponível",
+                            color = TvTextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
 

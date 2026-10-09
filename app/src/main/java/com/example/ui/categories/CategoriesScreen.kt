@@ -163,11 +163,15 @@ fun CategoriesScreen(
             CategoryChannelsView(
                 category = categoriesState.selectedCategoryForChannels!!,
                 streamsState = categoriesState.liveStreamsState,
+                channelEpgStates = uiState.channelEpgStates,
                 listTitle = categoriesState.listTitle,
                 onBackClick = { viewModel.closeLiveCategoryChannels() },
                 onRefreshClick = { viewModel.retryLiveStreamsForCurrentCategory() },
                 onChannelClick = { channel ->
                     viewModel.playLiveChannel(channel)
+                },
+                onChannelFocused = { streamId ->
+                    viewModel.onChannelFocused(streamId)
                 }
             )
         } else {

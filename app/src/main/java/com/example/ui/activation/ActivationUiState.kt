@@ -7,6 +7,8 @@ import com.example.domain.model.ListContentCategoriesState
 import com.example.domain.model.LivePlayerState
 import com.example.domain.model.XtreamAuthResult
 
+import com.example.domain.model.ShortEpgState
+
 enum class AppScreenSection {
     ACTIVATION,
     MY_LISTS,
@@ -46,5 +48,8 @@ data class ActivationUiState(
     val contentCategoriesState: ListContentCategoriesState? = null,
 
     // Estado do player de reprodução de canal ao vivo
-    val livePlayerState: LivePlayerState? = null
+    val livePlayerState: LivePlayerState? = null,
+
+    // Mapeamento de EPG curto por stream_id dos canais
+    val channelEpgStates: Map<String, ShortEpgState> = emptyMap()
 )

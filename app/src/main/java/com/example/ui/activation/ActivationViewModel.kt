@@ -9,6 +9,7 @@ import com.example.data.remote.LcAdminDeleteResponse
 import com.example.data.remote.LcAdminListsResponse
 import com.example.data.remote.LcAdminResponse
 import com.example.data.repository.DeviceRepository
+import com.example.data.remote.XtreamEpgClient
 import com.example.domain.model.ActivationStatus
 import com.example.domain.model.CategoryLoadResult
 import com.example.domain.model.CategoryType
@@ -20,19 +21,30 @@ import com.example.domain.model.LivePlayerState
 import com.example.domain.model.LiveStreamChannel
 import com.example.domain.model.LiveStreamsLoadResult
 import com.example.domain.model.LiveStreamsState
+import com.example.domain.model.ShortEpgFetchResult
+import com.example.domain.model.ShortEpgState
 import com.example.domain.model.XtreamAuthResult
 import com.example.domain.model.XtreamCategory
 import com.example.util.XtreamStreamUrlBuilder
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 class ActivationViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = AppDatabase.getDatabase(application)
     private val repository = DeviceRepository(application, database.deviceInfoDao())
+
+    private val xtreamEpgClient = XtreamEpgClient()
+    private val epgCache = ConcurrentHashMap<String, Pair<Long, ShortEpgState>>()
+    private var epgFetchJob: Job? = null
+    private var currentlyFocusedStreamId: String? = null
 
     private val _uiState = MutableStateFlow(ActivationUiState())
     val uiState: StateFlow<ActivationUiState> = _uiState.asStateFlow()
@@ -800,6 +812,111 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
+     * Solicitado quando um canal de TV ao vivo recebe foco na navegação D-pad
+     * ou é selecionado para reprodução.
+     * Busca o EPG curto (get_short_epg, limit=2) para o stream_id especificado.
+     *
+     * Estratégia:
+     * - Cache em memória por stream_id (TTL 5 minutos).
+     * - Cancelamento de requisições pendentes se o foco mudar rapidamente.
+     * - Debounce de 200ms para evitar rajadas HTTP na rolagem rápida.
+     * - Execução 100% assíncrona que nunca bloqueia navegação nem reprodução.
+     */
+    fun onChannelFocused(streamId: String) {
+        if (streamId.isBlank()) return
+        if (currentlyFocusedStreamId == streamId && _uiState.value.channelEpgStates[streamId]?.isLoading == true) {
+            return
+        }
+
+        currentlyFocusedStreamId = streamId
+        epgFetchJob?.cancel()
+
+        // 1. Verifica cache em memória
+        val cached = epgCache[streamId]
+        val now = System.currentTimeMillis()
+        if (cached != null && (now - cached.first) < 5 * 60 * 1000L) {
+            val cachedState = cached.second
+            _uiState.update { state ->
+                val updatedMap = state.channelEpgStates + (streamId to cachedState)
+                if (state.livePlayerState?.channel?.streamId == streamId) {
+                    state.copy(
+                        channelEpgStates = updatedMap,
+                        livePlayerState = state.livePlayerState.copy(epgState = cachedState)
+                    )
+                } else {
+                    state.copy(channelEpgStates = updatedMap)
+                }
+            }
+            return
+        }
+
+        // 2. Define estado inicial de carregamento caso não esteja no cache
+        _uiState.update { state ->
+            val loadingState = ShortEpgState(streamId = streamId, isLoading = true)
+            state.copy(channelEpgStates = state.channelEpgStates + (streamId to loadingState))
+        }
+
+        epgFetchJob = viewModelScope.launch {
+            // Delay de debounce para evitar rajadas de requisições durante navegação rápida pelo D-pad
+            delay(200)
+
+            if (!isActive || currentlyFocusedStreamId != streamId) return@launch
+
+            val catState = _uiState.value.contentCategoriesState
+            val listId = catState?.listId ?: _uiState.value.selectedListId ?: _uiState.value.livePlayerState?.listId
+            val currentList = _uiState.value.lists.firstOrNull { it.id == listId }
+
+            if (currentList == null || currentList.dns.isBlank()) {
+                val noListState = ShortEpgState(streamId = streamId, isLoading = false, hasError = true, errorMessage = "Lista não encontrada")
+                _uiState.update { state ->
+                    state.copy(channelEpgStates = state.channelEpgStates + (streamId to noListState))
+                }
+                return@launch
+            }
+
+            val epgResult = xtreamEpgClient.fetchShortEpg(
+                dns = currentList.dns,
+                username = currentList.username,
+                password = currentList.password,
+                streamId = streamId
+            )
+
+            if (!isActive || currentlyFocusedStreamId != streamId) return@launch
+
+            val finalEpgState = when (epgResult) {
+                is ShortEpgFetchResult.Success -> ShortEpgState(
+                    streamId = streamId,
+                    currentProgram = epgResult.currentProgram,
+                    nextProgram = epgResult.nextProgram,
+                    isLoading = false
+                )
+                is ShortEpgFetchResult.Error -> ShortEpgState(
+                    streamId = streamId,
+                    isLoading = false,
+                    hasError = true,
+                    errorMessage = epgResult.message
+                )
+            }
+
+            // Armazena no cache
+            epgCache[streamId] = Pair(System.currentTimeMillis(), finalEpgState)
+
+            // Atualiza UI
+            _uiState.update { state ->
+                val updatedMap = state.channelEpgStates + (streamId to finalEpgState)
+                if (state.livePlayerState?.channel?.streamId == streamId) {
+                    state.copy(
+                        channelEpgStates = updatedMap,
+                        livePlayerState = state.livePlayerState.copy(epgState = finalEpgState)
+                    )
+                } else {
+                    state.copy(channelEpgStates = updatedMap)
+                }
+            }
+        }
+    }
+
+    /**
      * Inicia a reprodução real de um canal de TV ao vivo.
      * Constrói a URL do stream a partir das credenciais da lista atualmente selecionada.
      */
@@ -825,6 +942,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
         Log.i(TAG, "Iniciando reprodução do canal: '${channel.name}' (stream_id=${channel.streamId}) da lista '${currentList.title}'")
 
+        val currentEpg = _uiState.value.channelEpgStates[channel.streamId]
+
         _uiState.update { state ->
             state.copy(
                 currentSection = AppScreenSection.LIVE_PLAYER,
@@ -836,9 +955,15 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     isPlaying = false,
                     isBuffering = true,
                     errorMessage = null,
-                    showControls = true
+                    showControls = true,
+                    epgState = currentEpg
                 )
             )
+        }
+
+        // Caso o EPG do canal ainda não tenha sido consultado, dispara busca assíncrona
+        if (currentEpg == null || currentEpg.isLoading) {
+            onChannelFocused(channel.streamId)
         }
     }
 

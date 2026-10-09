@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +43,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.domain.model.LiveStreamChannel
 import com.example.domain.model.LiveStreamsState
+import com.example.domain.model.ShortEpgState
 import com.example.domain.model.XtreamCategory
 import com.example.ui.components.tvFocusable
 import com.example.ui.theme.StatusActiveText
@@ -75,10 +78,12 @@ import com.example.ui.theme.TvTextSecondary
 fun CategoryChannelsView(
     category: XtreamCategory,
     streamsState: LiveStreamsState?,
+    channelEpgStates: Map<String, ShortEpgState> = emptyMap(),
     listTitle: String,
     onBackClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onChannelClick: (LiveStreamChannel) -> Unit,
+    onChannelFocused: ((streamId: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val backButtonFocusRequester = remember { FocusRequester() }
@@ -139,7 +144,9 @@ fun CategoryChannelsView(
                 else -> {
                     ChannelsGridView(
                         channels = channels,
-                        onChannelClick = onChannelClick
+                        epgStates = channelEpgStates,
+                        onChannelClick = onChannelClick,
+                        onChannelFocused = onChannelFocused
                     )
                 }
             }
@@ -310,10 +317,12 @@ private fun ChannelsTopBar(
 @Composable
 private fun ChannelsGridView(
     channels: List<LiveStreamChannel>,
-    onChannelClick: (LiveStreamChannel) -> Unit
+    epgStates: Map<String, ShortEpgState>,
+    onChannelClick: (LiveStreamChannel) -> Unit,
+    onChannelFocused: ((streamId: String) -> Unit)?
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 300.dp),
+        columns = GridCells.Adaptive(minSize = 340.dp),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 6.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -326,7 +335,9 @@ private fun ChannelsGridView(
             ChannelCardItem(
                 channel = channel,
                 index = index,
-                onClick = { onChannelClick(channel) }
+                epgState = epgStates[channel.streamId],
+                onClick = { onChannelClick(channel) },
+                onFocus = { onChannelFocused?.invoke(channel.streamId) }
             )
         }
     }
@@ -336,26 +347,33 @@ private fun ChannelsGridView(
 private fun ChannelCardItem(
     channel: LiveStreamChannel,
     index: Int,
-    onClick: () -> Unit
+    epgState: ShortEpgState?,
+    onClick: () -> Unit,
+    onFocus: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp)
+            .heightIn(min = 82.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(TvCardBackground)
             .border(1.dp, TvSurfaceVariant, RoundedCornerShape(12.dp))
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    onFocus()
+                }
+            }
             .tvFocusable(
                 shape = RoundedCornerShape(12.dp),
                 focusBorderColor = TvFocusBorder,
-                focusedScale = 1.04f,
+                focusedScale = 1.03f,
                 onClick = onClick
             )
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
             .testTag("channel_card_${channel.streamId}")
     ) {
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -405,24 +423,24 @@ private fun ChannelCardItem(
                 }
             }
 
-            // Nome e Detalhes do Canal
+            // Nome e Informações de EPG
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = channel.name,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Text(
+                        text = channel.name,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
@@ -432,16 +450,86 @@ private fun ChannelCardItem(
                         Text(
                             text = (channel.streamType ?: "LIVE").uppercase(),
                             color = TvSecondaryBlue,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    if (!channel.epgChannelId.isNullOrBlank()) {
+                }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                // Exibição do EPG (Programa Atual + Próximo Programa / Status)
+                when {
+                    epgState?.isLoading == true -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(10.dp),
+                                color = TvSecondaryBlue,
+                                strokeWidth = 1.5.dp
+                            )
+                            Text(
+                                text = "Buscando programação...",
+                                color = TvTextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    epgState?.hasEpg == true -> {
+                        val current = epgState.currentProgram
+                        val next = epgState.nextProgram
+
+                        if (current != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = current.title,
+                                    color = StatusActiveText,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (current.timeRangeFormatted.isNotBlank()) {
+                                    Text(
+                                        text = "• ${current.timeRangeFormatted}",
+                                        color = TvTextSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
+                        if (next != null) {
+                            val nextTime = if (!next.startTimeFormatted.isNullOrBlank()) " (${next.startTimeFormatted})" else ""
+                            Text(
+                                text = "Próximo: ${next.title}$nextTime",
+                                color = TvTextSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        } else if (current?.description != null && current.description.isNotBlank()) {
+                            Text(
+                                text = current.description,
+                                color = TvTextMuted,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    else -> {
                         Text(
-                            text = "EPG",
+                            text = "Programação indisponível",
                             color = TvTextMuted,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium
+                            fontSize = 11.sp
                         )
                     }
                 }

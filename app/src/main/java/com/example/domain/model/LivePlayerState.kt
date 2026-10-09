@@ -12,5 +12,6 @@ data class LivePlayerState(
     val isBuffering: Boolean = true,
     val errorMessage: String? = null,
     val showControls: Boolean = true,
-    val lastUserInteractionTime: Long = System.currentTimeMillis()
+    val lastUserInteractionTime: Long = System.currentTimeMillis(),
+    val epgState: ShortEpgState? = null
 )
