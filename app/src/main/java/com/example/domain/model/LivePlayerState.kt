@@ -13,5 +13,10 @@ data class LivePlayerState(
     val errorMessage: String? = null,
     val showControls: Boolean = true,
     val lastUserInteractionTime: Long = System.currentTimeMillis(),
-    val epgState: ShortEpgState? = null
+    val epgState: ShortEpgState? = null,
+    val startPositionMs: Long = 0L,
+    val seriesId: String? = null,
+    val seasonNum: Int? = null,
+    val episodeNum: Int? = null,
+    val episodeId: String? = null
 )

@@ -82,7 +82,10 @@ data class ListContentCategoriesState(
     val seriesError: String? = null,
     val selectedTab: CategoryType = CategoryType.LIVE,
     val selectedCategoryForChannels: XtreamCategory? = null,
-    val liveStreamsState: LiveStreamsState? = null
+    val liveStreamsState: LiveStreamsState? = null,
+    val vodStreamsState: VodStreamsState? = null,
+    val seriesState: SeriesState? = null,
+    val seriesDetailsState: SeriesDetailsState? = null
 ) {
     val isViewingChannels: Boolean
         get() = selectedCategoryForChannels != null

@@ -24,6 +24,16 @@ import com.example.domain.model.LiveStreamsState
 import com.example.domain.model.ShortEpgFetchResult
 import com.example.domain.model.ShortEpgState
 import com.example.domain.model.XtreamAuthResult
+import com.example.domain.model.EpisodeItem
+import com.example.domain.model.SeriesButtonState
+import com.example.domain.model.SeriesDetailsLoadResult
+import com.example.domain.model.SeriesDetailsState
+import com.example.domain.model.SeriesItem
+import com.example.domain.model.SeriesLoadResult
+import com.example.domain.model.SeriesState
+import com.example.domain.model.VodMovie
+import com.example.domain.model.VodStreamsLoadResult
+import com.example.domain.model.VodStreamsState
 import com.example.domain.model.XtreamCategory
 import com.example.util.XtreamStreamUrlBuilder
 import kotlinx.coroutines.Job
@@ -39,7 +49,11 @@ import java.util.concurrent.ConcurrentHashMap
 class ActivationViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = AppDatabase.getDatabase(application)
-    private val repository = DeviceRepository(application, database.deviceInfoDao())
+    private val repository = DeviceRepository(
+        context = application,
+        deviceInfoDao = database.deviceInfoDao(),
+        seriesProgressDao = database.seriesProgressDao()
+    )
 
     private val xtreamEpgClient = XtreamEpgClient()
     private val epgCache = ConcurrentHashMap<String, Pair<Long, ShortEpgState>>()
@@ -620,16 +634,10 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 openLiveCategoryChannels(category)
             }
             CategoryType.VOD -> {
-                Log.d(TAG, "Clique em categoria de filmes '${category.categoryName}' (não implementado nesta etapa)")
-                _uiState.update {
-                    it.copy(toastFeedback = "Filmes da categoria '${category.categoryName}' estarão disponíveis na próxima etapa")
-                }
+                openVodCategoryMovies(category)
             }
             CategoryType.SERIES -> {
-                Log.d(TAG, "Clique em categoria de séries '${category.categoryName}' (não implementado nesta etapa)")
-                _uiState.update {
-                    it.copy(toastFeedback = "Séries da categoria '${category.categoryName}' estarão disponíveis na próxima etapa")
-                }
+                openSeriesCategory(category)
             }
         }
     }
@@ -812,6 +820,593 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
+     * Abre a visualização dos filmes pertencentes à categoria de VOD selecionada.
+     */
+    fun openVodCategoryMovies(category: XtreamCategory) {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        Log.i(
+            TAG,
+            "Iniciando abertura de filmes para a categoria VOD: '${category.categoryName}' (ID: ${category.categoryId}) da lista '${currentList.title}'"
+        )
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    selectedCategoryForChannels = category,
+                    vodStreamsState = VodStreamsState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        movies = emptyList(),
+                        isLoading = true,
+                        errorMessage = null
+                    )
+                )
+            )
+        }
+
+        fetchVodStreamsForCategory(currentList, category)
+    }
+
+    private fun fetchVodStreamsForCategory(list: DeviceListModel, category: XtreamCategory) {
+        viewModelScope.launch {
+            Log.d(
+                TAG,
+                "Executando requisição get_vod_streams para category_id='${category.categoryId}'..."
+            )
+
+            val result = repository.fetchVodStreamsForCategoryOnline(list, category)
+
+            _uiState.update { state ->
+                val current = state.contentCategoriesState ?: return@update state
+                if (current.selectedCategoryForChannels?.categoryId != category.categoryId) {
+                    Log.d(TAG, "Resultado de filmes descartado: categoria ativa mudou")
+                    return@update state
+                }
+
+                val updatedVodState = when (result) {
+                    is VodStreamsLoadResult.Success -> {
+                        Log.i(
+                            TAG,
+                            "Filmes VOD carregados com sucesso: ${result.movies.size} títulos. Estratégia: ${result.filterStrategyUsed}"
+                        )
+                        VodStreamsState(
+                            categoryId = category.categoryId,
+                            categoryName = category.categoryName,
+                            movies = result.movies,
+                            isLoading = false,
+                            strategyUsed = result.filterStrategyUsed
+                        )
+                    }
+                    is VodStreamsLoadResult.Empty -> VodStreamsState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        movies = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage,
+                        strategyUsed = result.filterStrategyUsed
+                    )
+                    is VodStreamsLoadResult.Error -> VodStreamsState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        movies = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage
+                    )
+                    is VodStreamsLoadResult.NetworkError -> VodStreamsState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        movies = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage
+                    )
+                    is VodStreamsLoadResult.AuthError -> VodStreamsState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        movies = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage
+                    )
+                }
+
+                state.copy(
+                    contentCategoriesState = current.copy(vodStreamsState = updatedVodState)
+                )
+            }
+        }
+    }
+
+    /**
+     * Tenta novamente carregar os filmes da categoria VOD aberta.
+     */
+    fun retryVodStreamsForCurrentCategory() {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val category = catState.selectedCategoryForChannels ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            val vods = current.vodStreamsState ?: VodStreamsState(category.categoryId, category.categoryName)
+            state.copy(
+                contentCategoriesState = current.copy(
+                    vodStreamsState = vods.copy(isLoading = true, errorMessage = null)
+                )
+            )
+        }
+
+        fetchVodStreamsForCategory(currentList, category)
+    }
+
+    /**
+     * Fecha a visualização de filmes VOD e retorna à lista de categorias de filmes.
+     */
+    fun closeVodCategoryMovies() {
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    selectedCategoryForChannels = null,
+                    vodStreamsState = null
+                )
+            )
+        }
+    }
+
+    /**
+     * Inicia a reprodução real de um filme VOD selecionado pelo usuário.
+     */
+    fun playVodMovie(movie: VodMovie) {
+        val catState = _uiState.value.contentCategoriesState
+        val listId = catState?.listId ?: _uiState.value.selectedListId
+        val currentList = _uiState.value.lists.firstOrNull { it.id == listId }
+
+        if (currentList == null) {
+            Log.e(TAG, "Não foi possível iniciar o filme ${movie.name}: lista ativa não encontrada")
+            _uiState.update { it.copy(toastFeedback = "Erro: lista ativa não encontrada") }
+            return
+        }
+
+        val movieUrl = XtreamStreamUrlBuilder.buildVodMovieUrl(
+            rawDns = currentList.dns,
+            username = currentList.username,
+            password = currentList.password,
+            streamId = movie.streamId,
+            containerExtension = movie.containerExtension
+        )
+
+        Log.i(
+            TAG,
+            "Iniciando reprodução do filme VOD: '${movie.name}' (stream_id=${movie.streamId}, ext=${movie.containerExtension ?: "mp4"})"
+        )
+
+        val channelModel = LiveStreamChannel(
+            streamId = movie.streamId,
+            name = movie.name,
+            streamIcon = movie.streamIcon,
+            categoryId = movie.categoryId,
+            streamType = "movie"
+        )
+
+        _uiState.update { state ->
+            state.copy(
+                currentSection = AppScreenSection.LIVE_PLAYER,
+                livePlayerState = LivePlayerState(
+                    channel = channelModel,
+                    listId = currentList.id,
+                    listTitle = currentList.title,
+                    playbackUrl = movieUrl,
+                    isPlaying = false,
+                    isBuffering = true,
+                    errorMessage = null,
+                    showControls = true,
+                    epgState = null
+                )
+            )
+        }
+    }
+
+    /**
+     * Abre a visualização das séries pertencentes à categoria de Séries selecionada.
+     */
+    fun openSeriesCategory(category: XtreamCategory) {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        Log.i(
+            TAG,
+            "Iniciando abertura de séries para a categoria: '${category.categoryName}' (ID: ${category.categoryId}) da lista '${currentList.title}'"
+        )
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    selectedCategoryForChannels = category,
+                    seriesState = SeriesState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        seriesList = emptyList(),
+                        isLoading = true,
+                        errorMessage = null
+                    )
+                )
+            )
+        }
+
+        fetchSeriesForCategory(currentList, category)
+    }
+
+    private fun fetchSeriesForCategory(list: DeviceListModel, category: XtreamCategory) {
+        viewModelScope.launch {
+            Log.d(
+                TAG,
+                "Executando requisição get_series para category_id='${category.categoryId}'..."
+            )
+
+            val result = repository.fetchSeriesForCategoryOnline(list, category)
+
+            _uiState.update { state ->
+                val current = state.contentCategoriesState ?: return@update state
+                if (current.selectedCategoryForChannels?.categoryId != category.categoryId) {
+                    Log.d(TAG, "Resultado de séries descartado: categoria ativa mudou")
+                    return@update state
+                }
+
+                val updatedSeriesState = when (result) {
+                    is SeriesLoadResult.Success -> {
+                        Log.i(
+                            TAG,
+                            "Séries carregadas com sucesso: ${result.series.size} títulos. Estratégia: ${result.filterStrategyUsed}"
+                        )
+                        SeriesState(
+                            categoryId = category.categoryId,
+                            categoryName = category.categoryName,
+                            seriesList = result.series,
+                            isLoading = false,
+                            strategyUsed = result.filterStrategyUsed
+                        )
+                    }
+                    is SeriesLoadResult.Empty -> SeriesState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        seriesList = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage,
+                        strategyUsed = result.filterStrategyUsed
+                    )
+                    is SeriesLoadResult.Error -> SeriesState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        seriesList = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage
+                    )
+                    is SeriesLoadResult.NetworkError -> SeriesState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        seriesList = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage
+                    )
+                    is SeriesLoadResult.AuthError -> SeriesState(
+                        categoryId = category.categoryId,
+                        categoryName = category.categoryName,
+                        seriesList = emptyList(),
+                        isLoading = false,
+                        errorMessage = result.displayMessage
+                    )
+                }
+
+                state.copy(
+                    contentCategoriesState = current.copy(seriesState = updatedSeriesState)
+                )
+            }
+        }
+    }
+
+    /**
+     * Tenta novamente carregar as séries da categoria aberta.
+     */
+    fun retrySeriesForCurrentCategory() {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val category = catState.selectedCategoryForChannels ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            val seriesSt = current.seriesState ?: SeriesState(category.categoryId, category.categoryName)
+            state.copy(
+                contentCategoriesState = current.copy(
+                    seriesState = seriesSt.copy(isLoading = true, errorMessage = null)
+                )
+            )
+        }
+
+        fetchSeriesForCategory(currentList, category)
+    }
+
+    /**
+     * Abre a tela de detalhes de uma série (temporadas e episódios) e carrega o histórico de progresso.
+     */
+    fun openSeriesDetails(series: SeriesItem) {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        Log.i(
+            TAG,
+            "Solicitando detalhes da série: '${series.name}' (series_id=${series.seriesId})"
+        )
+
+        viewModelScope.launch {
+            val progressList = repository.getSeriesProgress(series.seriesId)
+            _uiState.update { state ->
+                val current = state.contentCategoriesState ?: return@update state
+                state.copy(
+                    contentCategoriesState = current.copy(
+                        seriesDetailsState = SeriesDetailsState(
+                            seriesItem = series,
+                            details = null,
+                            selectedSeasonNum = null,
+                            isLoading = true,
+                            errorMessage = null,
+                            savedProgressList = progressList
+                        )
+                    )
+                )
+            }
+            fetchSeriesDetails(currentList, series)
+        }
+    }
+
+    private fun fetchSeriesDetails(list: DeviceListModel, series: SeriesItem) {
+        viewModelScope.launch {
+            val result = repository.fetchSeriesDetailsOnline(list, series.seriesId)
+            val progressList = repository.getSeriesProgress(series.seriesId)
+
+            _uiState.update { state ->
+                val current = state.contentCategoriesState ?: return@update state
+                val currentDetailsState = current.seriesDetailsState ?: return@update state
+
+                if (currentDetailsState.seriesItem.seriesId != series.seriesId) {
+                    Log.d(TAG, "Resultado de detalhes de série descartado: série ativa mudou")
+                    return@update state
+                }
+
+                val updatedDetailsState = when (result) {
+                    is SeriesDetailsLoadResult.Success -> {
+                        val details = result.details
+                        val defaultSeason = details.seasons.firstOrNull()?.seasonNumber ?: 1
+                        currentDetailsState.copy(
+                            details = details,
+                            selectedSeasonNum = defaultSeason,
+                            isLoading = false,
+                            errorMessage = null,
+                            savedProgressList = progressList
+                        )
+                    }
+                    is SeriesDetailsLoadResult.Error -> {
+                        currentDetailsState.copy(
+                            isLoading = false,
+                            errorMessage = result.displayMessage,
+                            savedProgressList = progressList
+                        )
+                    }
+                }
+
+                state.copy(
+                    contentCategoriesState = current.copy(seriesDetailsState = updatedDetailsState)
+                )
+            }
+        }
+    }
+
+    /**
+     * Seleciona uma temporada específica para exibir seus episódios.
+     */
+    fun selectSeasonForSeries(seasonNum: Int) {
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            val detailsState = current.seriesDetailsState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    seriesDetailsState = detailsState.copy(selectedSeasonNum = seasonNum)
+                )
+            )
+        }
+    }
+
+    /**
+     * Tenta novamente carregar os detalhes da série.
+     */
+    fun retrySeriesDetails() {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val detailsState = catState.seriesDetailsState ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            val curDet = current.seriesDetailsState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    seriesDetailsState = curDet.copy(isLoading = true, errorMessage = null)
+                )
+            )
+        }
+
+        fetchSeriesDetails(currentList, detailsState.seriesItem)
+    }
+
+    /**
+     * Fecha a visualização de detalhes da série e retorna à grade de séries da categoria.
+     */
+    fun closeSeriesDetails() {
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(seriesDetailsState = null)
+            )
+        }
+    }
+
+    /**
+     * Fecha a visualização de séries e retorna às categorias de séries.
+     */
+    fun closeSeriesCategory() {
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    selectedCategoryForChannels = null,
+                    seriesState = null,
+                    seriesDetailsState = null
+                )
+            )
+        }
+    }
+
+    /**
+     * Inicia a reprodução real de um episódio de série selecionado pelo usuário.
+     */
+    fun playSeriesEpisode(episode: EpisodeItem, startPositionMs: Long = 0L) {
+        val catState = _uiState.value.contentCategoriesState
+        val details = catState?.seriesDetailsState?.details
+        val seriesItem = catState?.seriesDetailsState?.seriesItem
+        val listId = catState?.listId ?: _uiState.value.selectedListId
+        val currentList = _uiState.value.lists.firstOrNull { it.id == listId }
+
+        if (currentList == null) {
+            Log.e(TAG, "Não foi possível iniciar o episódio: lista ativa não encontrada")
+            _uiState.update { it.copy(toastFeedback = "Erro: lista ativa não encontrada") }
+            return
+        }
+
+        val episodeUrl = XtreamStreamUrlBuilder.buildSeriesEpisodeUrl(
+            rawDns = currentList.dns,
+            username = currentList.username,
+            password = currentList.password,
+            episodeId = episode.id,
+            containerExtension = episode.containerExtension
+        )
+
+        val seriesTitle = details?.title ?: seriesItem?.name ?: "Série"
+        val formattedTitle = "$seriesTitle - S${episode.seasonNum}E${episode.episodeNum}: ${episode.title}"
+        val sId = details?.seriesId ?: seriesItem?.seriesId ?: ""
+
+        Log.i(
+            TAG,
+            "Iniciando reprodução de episódio de série: '$formattedTitle' (series_id=$sId, episode_id=${episode.id}, season=${episode.seasonNum}, ep=${episode.episodeNum}, start_pos=${startPositionMs}ms)"
+        )
+
+        val channelModel = LiveStreamChannel(
+            streamId = episode.id,
+            name = formattedTitle,
+            streamIcon = episode.image ?: details?.cover ?: seriesItem?.cover,
+            categoryId = catState?.selectedCategoryForChannels?.categoryId ?: "",
+            streamType = "series"
+        )
+
+        _uiState.update { state ->
+            state.copy(
+                currentSection = AppScreenSection.LIVE_PLAYER,
+                livePlayerState = LivePlayerState(
+                    channel = channelModel,
+                    listId = currentList.id,
+                    listTitle = currentList.title,
+                    playbackUrl = episodeUrl,
+                    isPlaying = false,
+                    isBuffering = true,
+                    errorMessage = null,
+                    showControls = true,
+                    epgState = null,
+                    startPositionMs = startPositionMs,
+                    seriesId = sId,
+                    seasonNum = episode.seasonNum,
+                    episodeNum = episode.episodeNum,
+                    episodeId = episode.id
+                )
+            )
+        }
+    }
+
+    /**
+     * Ação do botão principal da série ("Iniciar série" / "Continuar" / "Assistir novamente").
+     */
+    fun openPrimarySeriesButton() {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val detailsState = catState.seriesDetailsState ?: return
+
+        when (val btnState = detailsState.primaryButtonState) {
+            is SeriesButtonState.StartSeries -> {
+                playSeriesEpisode(btnState.firstEpisode, startPositionMs = 0L)
+            }
+            is SeriesButtonState.ContinueSeries -> {
+                playSeriesEpisode(btnState.targetEpisode, startPositionMs = btnState.startPositionMs)
+            }
+            is SeriesButtonState.RestartSeries -> {
+                viewModelScope.launch {
+                    repository.clearSeriesProgress(detailsState.seriesItem.seriesId)
+                    refreshSeriesDetailsProgress(detailsState.seriesItem.seriesId)
+                    playSeriesEpisode(btnState.firstEpisode, startPositionMs = 0L)
+                }
+            }
+            is SeriesButtonState.NoEpisodesAvailable -> {
+                _uiState.update { it.copy(toastFeedback = "Nenhum episódio disponível para esta série") }
+            }
+        }
+    }
+
+    /**
+     * Salva o progresso local de reprodução de um episódio durante a execução do player.
+     */
+    fun savePlayerEpisodeProgress(
+        positionMs: Long,
+        durationMs: Long,
+        forceCompleted: Boolean = false
+    ) {
+        val playerState = _uiState.value.livePlayerState ?: return
+        val seriesId = playerState.seriesId ?: return
+        val episodeId = playerState.episodeId ?: return
+        val seasonNum = playerState.seasonNum ?: return
+        val episodeNum = playerState.episodeNum ?: return
+
+        if (durationMs <= 0) return
+
+        val completed = forceCompleted || (positionMs >= 0.92 * durationMs)
+        val finalPos = if (completed) durationMs else positionMs
+
+        viewModelScope.launch {
+            repository.saveEpisodeProgress(
+                seriesId = seriesId,
+                episodeId = episodeId,
+                seasonNum = seasonNum,
+                episodeNum = episodeNum,
+                positionMs = finalPos,
+                durationMs = durationMs,
+                completed = completed
+            )
+            refreshSeriesDetailsProgress(seriesId)
+        }
+    }
+
+    private fun refreshSeriesDetailsProgress(seriesId: String) {
+        viewModelScope.launch {
+            val progressList = repository.getSeriesProgress(seriesId)
+            _uiState.update { state ->
+                val current = state.contentCategoriesState ?: return@update state
+                val detState = current.seriesDetailsState ?: return@update state
+                if (detState.seriesItem.seriesId != seriesId) return@update state
+                state.copy(
+                    contentCategoriesState = current.copy(
+                        seriesDetailsState = detState.copy(savedProgressList = progressList)
+                    )
+                )
+            }
+        }
+    }
+
+    /**
      * Solicitado quando um canal de TV ao vivo recebe foco na navegação D-pad
      * ou é selecionado para reprodução.
      * Busca o EPG curto (get_short_epg, limit=2) para o stream_id especificado.
@@ -965,6 +1560,84 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         if (currentEpg == null || currentEpg.isLoading) {
             onChannelFocused(channel.streamId)
         }
+    }
+
+    /**
+     * Troca para o canal ou filme anterior na lista da categoria atualmente aberta.
+     * Suporta navegação cíclica (do primeiro item volta para o último).
+     */
+    fun playPreviousChannel() {
+        val currentChannel = _uiState.value.livePlayerState?.channel ?: return
+        val catState = _uiState.value.contentCategoriesState
+
+        if (currentChannel.streamType == "movie") {
+            val vodList = catState?.vodStreamsState?.movies ?: emptyList()
+            if (vodList.isEmpty()) return
+            val currentIndex = vodList.indexOfFirst { it.streamId == currentChannel.streamId }
+            val targetIndex = if (currentIndex > 0) currentIndex - 1 else vodList.lastIndex
+            val targetMovie = vodList[targetIndex]
+            playVodMovie(targetMovie)
+            return
+        }
+
+        val channelsList = catState?.liveStreamsState?.channels ?: emptyList()
+        if (channelsList.isEmpty()) {
+            Log.w(TAG, "Troca de canal ignorada: lista de canais vazia na categoria")
+            return
+        }
+
+        val currentIndex = channelsList.indexOfFirst { it.streamId == currentChannel.streamId }
+        val targetIndex = if (currentIndex > 0) {
+            currentIndex - 1
+        } else {
+            channelsList.lastIndex
+        }
+
+        val targetChannel = channelsList[targetIndex]
+        Log.i(
+            TAG,
+            "Troca de canal (Anterior): de '${currentChannel.name}' [pos $currentIndex] para '${targetChannel.name}' [pos $targetIndex]"
+        )
+        playLiveChannel(targetChannel)
+    }
+
+    /**
+     * Troca para o próximo canal ou filme na lista da categoria atualmente aberta.
+     * Suporta navegação cíclica (do último item avança para o primeiro).
+     */
+    fun playNextChannel() {
+        val currentChannel = _uiState.value.livePlayerState?.channel ?: return
+        val catState = _uiState.value.contentCategoriesState
+
+        if (currentChannel.streamType == "movie") {
+            val vodList = catState?.vodStreamsState?.movies ?: emptyList()
+            if (vodList.isEmpty()) return
+            val currentIndex = vodList.indexOfFirst { it.streamId == currentChannel.streamId }
+            val targetIndex = if (currentIndex >= 0 && currentIndex < vodList.lastIndex) currentIndex + 1 else 0
+            val targetMovie = vodList[targetIndex]
+            playVodMovie(targetMovie)
+            return
+        }
+
+        val channelsList = catState?.liveStreamsState?.channels ?: emptyList()
+        if (channelsList.isEmpty()) {
+            Log.w(TAG, "Troca de canal ignorada: lista de canais vazia na categoria")
+            return
+        }
+
+        val currentIndex = channelsList.indexOfFirst { it.streamId == currentChannel.streamId }
+        val targetIndex = if (currentIndex >= 0 && currentIndex < channelsList.lastIndex) {
+            currentIndex + 1
+        } else {
+            0
+        }
+
+        val targetChannel = channelsList[targetIndex]
+        Log.i(
+            TAG,
+            "Troca de canal (Próximo): de '${currentChannel.name}' [pos $currentIndex] para '${targetChannel.name}' [pos $targetIndex]"
+        )
+        playLiveChannel(targetChannel)
     }
 
     /**

@@ -61,6 +61,11 @@ class MainActivity : ComponentActivity() {
                                 LivePlayerScreen(
                                     playerState = playerState,
                                     onBackClick = { activationViewModel.closeLivePlayer() },
+                                    onPreviousChannel = { activationViewModel.playPreviousChannel() },
+                                    onNextChannel = { activationViewModel.playNextChannel() },
+                                    onSaveProgress = { pos, dur, completed ->
+                                        activationViewModel.savePlayerEpisodeProgress(pos, dur, completed)
+                                    },
                                     onPlayerStateChange = { isPlaying, isBuffering, error ->
                                         activationViewModel.updatePlayerState(isPlaying, isBuffering, error)
                                     },

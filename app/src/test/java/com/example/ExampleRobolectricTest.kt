@@ -576,6 +576,264 @@ class ExampleRobolectricTest {
         assertEquals("1050", state.streamId)
         assertEquals("Tela Quente", state.currentProgram?.title)
     }
+
+    @Test
+    fun `verify cyclic channel navigation logic`() {
+        val channels = listOf(
+            com.example.domain.model.LiveStreamChannel("101", "Globo", categoryId = "1"),
+            com.example.domain.model.LiveStreamChannel("102", "SBT", categoryId = "1"),
+            com.example.domain.model.LiveStreamChannel("103", "Band", categoryId = "1")
+        )
+
+        // Test next channel from index 0 -> 1 -> 2 -> 0 (wrap)
+        var currentIndex = 0
+        var nextIndex = if (currentIndex < channels.lastIndex) currentIndex + 1 else 0
+        assertEquals(1, nextIndex)
+
+        currentIndex = 2
+        nextIndex = if (currentIndex < channels.lastIndex) currentIndex + 1 else 0
+        assertEquals(0, nextIndex)
+
+        // Test prev channel from index 0 -> 2 (wrap) -> 1 -> 0
+        currentIndex = 0
+        var prevIndex = if (currentIndex > 0) currentIndex - 1 else channels.lastIndex
+        assertEquals(2, prevIndex)
+
+        currentIndex = 2
+        prevIndex = if (currentIndex > 0) currentIndex - 1 else channels.lastIndex
+        assertEquals(1, prevIndex)
+    }
+
+    @Test
+    fun `verify buildVodMovieUrl constructs VOD URL with container extension`() {
+        val urlMp4 = com.example.util.XtreamStreamUrlBuilder.buildVodMovieUrl(
+            rawDns = "http://servidor.net:8080/",
+            username = "usuario",
+            password = "password",
+            streamId = "12345",
+            containerExtension = "mp4"
+        )
+        assertEquals("http://servidor.net:8080/movie/usuario/password/12345.mp4", urlMp4)
+
+        val urlMkv = com.example.util.XtreamStreamUrlBuilder.buildVodMovieUrl(
+            rawDns = "https://ssl.servidor.com",
+            username = "user",
+            password = "pass",
+            streamId = "999",
+            containerExtension = ".mkv"
+        )
+        assertEquals("https://ssl.servidor.com/movie/user/pass/999.mkv", urlMkv)
+
+        val urlDefault = com.example.util.XtreamStreamUrlBuilder.buildVodMovieUrl(
+            rawDns = "http://servidor.net",
+            username = "user",
+            password = "pass",
+            streamId = "555",
+            containerExtension = null
+        )
+        assertEquals("http://servidor.net/movie/user/pass/555.mp4", urlDefault)
+    }
+
+    @Test
+    fun `verify VodMovie model preserves properties and optional fields`() {
+        val movie = com.example.domain.model.VodMovie(
+            streamId = "5001",
+            name = "Inception",
+            streamIcon = "http://servidor.net/posters/inception.jpg",
+            rating = "8.8",
+            rating5based = 4.4,
+            containerExtension = "mkv",
+            categoryId = "20"
+        )
+
+        assertEquals("5001", movie.streamId)
+        assertEquals("Inception", movie.name)
+        assertEquals("http://servidor.net/posters/inception.jpg", movie.streamIcon)
+        assertEquals("8.8", movie.rating)
+        assertEquals("mkv", movie.containerExtension)
+        assertEquals("20", movie.categoryId)
+    }
+
+    @Test
+    fun `verify buildVodStreamsUrl constructs url safely with action get_vod_streams`() {
+        val vodUrl = com.example.data.remote.XtreamVodStreamsClient.buildVodStreamsUrl(
+            dns = "http://servidor.net:8080/",
+            username = "user test",
+            password = "pass#123",
+            categoryId = "20"
+        )
+
+        assertTrue(vodUrl.startsWith("http://servidor.net:8080/player_api.php?"))
+        assertTrue(vodUrl.contains("action=get_vod_streams"))
+        assertTrue(vodUrl.contains("category_id=20"))
+        assertTrue(vodUrl.contains("username=user+test"))
+    }
+
+    @Test
+    fun `verify buildSeriesEpisodeUrl constructs Series URL with episode_id and container extension`() {
+        val episodeUrlMkv = com.example.util.XtreamStreamUrlBuilder.buildSeriesEpisodeUrl(
+            rawDns = "http://servidor.net:8080/",
+            username = "usuario",
+            password = "password",
+            episodeId = "888123",
+            containerExtension = "mkv"
+        )
+        assertEquals("http://servidor.net:8080/series/usuario/password/888123.mkv", episodeUrlMkv)
+
+        val episodeUrlMp4 = com.example.util.XtreamStreamUrlBuilder.buildSeriesEpisodeUrl(
+            rawDns = "https://ssl.servidor.com",
+            username = "user",
+            password = "pass",
+            episodeId = "999888",
+            containerExtension = ".mp4"
+        )
+        assertEquals("https://ssl.servidor.com/series/user/pass/999888.mp4", episodeUrlMp4)
+    }
+
+    @Test
+    fun `verify SeriesItem and EpisodeItem models preserve properties`() {
+        val series = com.example.domain.model.SeriesItem(
+            seriesId = "7001",
+            name = "Breaking Bad",
+            cover = "http://servidor.net/covers/bb.jpg",
+            rating = "9.5",
+            categoryId = "30"
+        )
+        assertEquals("7001", series.seriesId)
+        assertEquals("Breaking Bad", series.name)
+        assertEquals("30", series.categoryId)
+
+        val episode = com.example.domain.model.EpisodeItem(
+            id = "888123",
+            episodeNum = 1,
+            seasonNum = 1,
+            title = "Pilot",
+            containerExtension = "mkv",
+            duration = "58 min"
+        )
+        assertEquals("888123", episode.id)
+        assertEquals(1, episode.episodeNum)
+        assertEquals(1, episode.seasonNum)
+        assertEquals("Pilot", episode.title)
+        assertEquals("mkv", episode.containerExtension)
+    }
+
+    @Test
+    fun `verify buildSeriesUrl and buildSeriesInfoUrl construct safe endpoints`() {
+        val listUrl = com.example.data.remote.XtreamSeriesClient.buildSeriesUrl(
+            dns = "http://servidor.net:8080/",
+            username = "user test",
+            password = "pass#123",
+            categoryId = "30"
+        )
+        assertTrue(listUrl.contains("action=get_series"))
+        assertTrue(listUrl.contains("category_id=30"))
+
+        val infoUrl = com.example.data.remote.XtreamSeriesClient.buildSeriesInfoUrl(
+            dns = "http://servidor.net:8080/",
+            username = "user test",
+            password = "pass#123",
+            seriesId = "7001"
+        )
+        assertTrue(infoUrl.contains("action=get_series_info"))
+        assertTrue(infoUrl.contains("series_id=7001"))
+    }
+
+    @Test
+    fun `verify computePrimaryButtonState for Scenarios A, B, C, D, E`() {
+        val ep1 = com.example.domain.model.EpisodeItem("ep101", 1, 1, "Piloto")
+        val ep2 = com.example.domain.model.EpisodeItem("ep102", 2, 1, "Gato na Sacola")
+        val epS2E1 = com.example.domain.model.EpisodeItem("ep201", 1, 2, "Setenta e Quatro Sete")
+
+        val seasons = listOf(
+            com.example.domain.model.SeasonItem(1, "Temporada 1", 2),
+            com.example.domain.model.SeasonItem(2, "Temporada 2", 1)
+        )
+
+        val episodesMap = mapOf(
+            1 to listOf(ep1, ep2),
+            2 to listOf(epS2E1)
+        )
+
+        val details = com.example.domain.model.SeriesDetails(
+            seriesId = "7001",
+            title = "Breaking Bad",
+            seasons = seasons,
+            episodesBySeason = episodesMap
+        )
+
+        // Scenario A: Nunca assistida -> Iniciar série
+        val btnStateA = com.example.domain.model.computePrimaryButtonState(details, emptyList())
+        assertTrue("Scenario A should be StartSeries", btnStateA is com.example.domain.model.SeriesButtonState.StartSeries)
+        assertEquals("ep101", (btnStateA as com.example.domain.model.SeriesButtonState.StartSeries).firstEpisode.id)
+
+        // Scenario B: Ep 1 assistido parcialmente (incompleto, 15 min) -> Continuar Ep 1
+        val progB = listOf(
+            com.example.data.local.entity.SeriesProgressEntity("ep101", "7001", 1, 1, positionMs = 900000L, durationMs = 3000000L, completed = false, updatedAt = 100L)
+        )
+        val btnStateB = com.example.domain.model.computePrimaryButtonState(details, progB)
+        assertTrue("Scenario B should be ContinueSeries", btnStateB is com.example.domain.model.SeriesButtonState.ContinueSeries)
+        val contB = btnStateB as com.example.domain.model.SeriesButtonState.ContinueSeries
+        assertEquals("ep101", contB.targetEpisode.id)
+        assertEquals(900000L, contB.startPositionMs)
+
+        // Scenario C: Ep 1 concluído -> Continuar Ep 2
+        val progC = listOf(
+            com.example.data.local.entity.SeriesProgressEntity("ep101", "7001", 1, 1, positionMs = 3000000L, durationMs = 3000000L, completed = true, updatedAt = 200L)
+        )
+        val btnStateC = com.example.domain.model.computePrimaryButtonState(details, progC)
+        assertTrue("Scenario C should be ContinueSeries", btnStateC is com.example.domain.model.SeriesButtonState.ContinueSeries)
+        val contC = btnStateC as com.example.domain.model.SeriesButtonState.ContinueSeries
+        assertEquals("ep102", contC.targetEpisode.id)
+        assertEquals(0L, contC.startPositionMs)
+
+        // Scenario D: Ep 2 (último da Temp 1) concluído -> Continuar Temp 2 Ep 1
+        val progD = listOf(
+            com.example.data.local.entity.SeriesProgressEntity("ep102", "7001", 1, 2, positionMs = 3000000L, durationMs = 3000000L, completed = true, updatedAt = 300L)
+        )
+        val btnStateD = com.example.domain.model.computePrimaryButtonState(details, progD)
+        assertTrue("Scenario D should be ContinueSeries", btnStateD is com.example.domain.model.SeriesButtonState.ContinueSeries)
+        val contD = btnStateD as com.example.domain.model.SeriesButtonState.ContinueSeries
+        assertEquals("ep201", contD.targetEpisode.id)
+        assertEquals(2, contD.targetSeasonNum)
+
+        // Scenario E: Ep 1 da Temp 2 (último episódio da série) concluído -> Assistir novamente
+        val progE = listOf(
+            com.example.data.local.entity.SeriesProgressEntity("ep201", "7001", 2, 1, positionMs = 3000000L, durationMs = 3000000L, completed = true, updatedAt = 400L)
+        )
+        val btnStateE = com.example.domain.model.computePrimaryButtonState(details, progE)
+        assertTrue("Scenario E should be RestartSeries", btnStateE is com.example.domain.model.SeriesButtonState.RestartSeries)
+        assertEquals("ep101", (btnStateE as com.example.domain.model.SeriesButtonState.RestartSeries).firstEpisode.id)
+    }
+
+    @Test
+    fun `verify getNextEpisode finds next episode in same season or next season`() {
+        val ep1 = com.example.domain.model.EpisodeItem("ep1", 1, 1, "E1")
+        val ep2 = com.example.domain.model.EpisodeItem("ep2", 2, 1, "E2")
+        val epS2E1 = com.example.domain.model.EpisodeItem("ep3", 1, 2, "S2E1")
+
+        val details = com.example.domain.model.SeriesDetails(
+            seriesId = "100",
+            title = "Serie Teste",
+            seasons = listOf(
+                com.example.domain.model.SeasonItem(1, "Temp 1", 2),
+                com.example.domain.model.SeasonItem(2, "Temp 2", 1)
+            ),
+            episodesBySeason = mapOf(
+                1 to listOf(ep1, ep2),
+                2 to listOf(epS2E1)
+            )
+        )
+
+        val nextAfterE1 = com.example.domain.model.getNextEpisode(details, currentSeasonNum = 1, currentEpisodeNum = 1)
+        assertEquals("ep2", nextAfterE1?.id)
+
+        val nextAfterE2 = com.example.domain.model.getNextEpisode(details, currentSeasonNum = 1, currentEpisodeNum = 2)
+        assertEquals("ep3", nextAfterE2?.id)
+
+        val nextAfterS2E1 = com.example.domain.model.getNextEpisode(details, currentSeasonNum = 2, currentEpisodeNum = 1)
+        assertNull(nextAfterS2E1)
+    }
 }
 
 

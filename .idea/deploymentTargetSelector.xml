@@ -2,7 +2,7 @@
 <project version="4">
   <component name="deploymentTargetSelector">
     <selectionStates>
-      <SelectionState runConfigName="LC Player">
+      <SelectionState runConfigName="LCPlayer">
         <option name="selectionMode" value="DROPDOWN" />
         <DropdownSelection timestamp="2026-10-08T20:13:33.501893Z">
           <Target type="DEFAULT_BOOT">

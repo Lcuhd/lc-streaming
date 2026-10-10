@@ -5,11 +5,14 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.local.dao.DeviceInfoDao
+import com.example.data.local.dao.SeriesProgressDao
 import com.example.data.local.entity.DeviceInfoEntity
+import com.example.data.local.entity.SeriesProgressEntity
 
-@Database(entities = [DeviceInfoEntity::class], version = 1, exportSchema = false)
+@Database(entities = [DeviceInfoEntity::class, SeriesProgressEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deviceInfoDao(): DeviceInfoDao
+    abstract fun seriesProgressDao(): SeriesProgressDao
 
     companion object {
         @Volatile

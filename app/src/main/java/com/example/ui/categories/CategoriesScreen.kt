@@ -101,10 +101,16 @@ fun CategoriesScreen(
     val initialFocusRequester = remember { FocusRequester() }
     var showDeviceInfoDialog by remember { mutableStateOf(false) }
 
-    // Retorna para a tela de Minhas Listas ou fecha canais ao pressionar Voltar no controle remoto
+    // Retorna para a tela de Minhas Listas ou fecha episódios/séries/filmes/canais ao pressionar Voltar
     BackHandler {
-        if (categoriesState?.selectedCategoryForChannels != null) {
-            viewModel.closeLiveCategoryChannels()
+        if (categoriesState?.seriesDetailsState != null) {
+            viewModel.closeSeriesDetails()
+        } else if (categoriesState?.selectedCategoryForChannels != null) {
+            when (categoriesState.selectedCategoryForChannels?.type) {
+                CategoryType.VOD -> viewModel.closeVodCategoryMovies()
+                CategoryType.SERIES -> viewModel.closeSeriesCategory()
+                else -> viewModel.closeLiveCategoryChannels()
+            }
         } else {
             viewModel.closeContentCategories()
         }
@@ -158,22 +164,60 @@ fun CategoriesScreen(
                 )
         )
 
-        // Se uma categoria de TV foi selecionada, exibe a visualização de seus canais reais
-        if (categoriesState.selectedCategoryForChannels != null) {
-            CategoryChannelsView(
-                category = categoriesState.selectedCategoryForChannels!!,
-                streamsState = categoriesState.liveStreamsState,
-                channelEpgStates = uiState.channelEpgStates,
-                listTitle = categoriesState.listTitle,
-                onBackClick = { viewModel.closeLiveCategoryChannels() },
-                onRefreshClick = { viewModel.retryLiveStreamsForCurrentCategory() },
-                onChannelClick = { channel ->
-                    viewModel.playLiveChannel(channel)
-                },
-                onChannelFocused = { streamId ->
-                    viewModel.onChannelFocused(streamId)
-                }
+        // Se o detalhe de uma série estiver aberto ou se uma categoria foi selecionada
+        if (categoriesState.seriesDetailsState != null) {
+            SeriesDetailsView(
+                detailsState = categoriesState.seriesDetailsState,
+                onBackClick = { viewModel.closeSeriesDetails() },
+                onPrimaryButtonClick = { viewModel.openPrimarySeriesButton() },
+                onSelectSeason = { seasonNum -> viewModel.selectSeasonForSeries(seasonNum) },
+                onEpisodeClick = { episode -> viewModel.playSeriesEpisode(episode) },
+                onRetryClick = { viewModel.retrySeriesDetails() }
             )
+        } else if (categoriesState.selectedCategoryForChannels != null) {
+            val selectedCat = categoriesState.selectedCategoryForChannels!!
+            when (selectedCat.type) {
+                CategoryType.VOD -> {
+                    CategoryVodMoviesView(
+                        category = selectedCat,
+                        vodState = categoriesState.vodStreamsState,
+                        listTitle = categoriesState.listTitle,
+                        onBackClick = { viewModel.closeVodCategoryMovies() },
+                        onRefreshClick = { viewModel.retryVodStreamsForCurrentCategory() },
+                        onMovieClick = { movie ->
+                            viewModel.playVodMovie(movie)
+                        }
+                    )
+                }
+                CategoryType.SERIES -> {
+                    CategorySeriesView(
+                        category = selectedCat,
+                        seriesState = categoriesState.seriesState,
+                        listTitle = categoriesState.listTitle,
+                        onBackClick = { viewModel.closeSeriesCategory() },
+                        onRefreshClick = { viewModel.retrySeriesForCurrentCategory() },
+                        onSeriesClick = { series ->
+                            viewModel.openSeriesDetails(series)
+                        }
+                    )
+                }
+                CategoryType.LIVE -> {
+                    CategoryChannelsView(
+                        category = selectedCat,
+                        streamsState = categoriesState.liveStreamsState,
+                        channelEpgStates = uiState.channelEpgStates,
+                        listTitle = categoriesState.listTitle,
+                        onBackClick = { viewModel.closeLiveCategoryChannels() },
+                        onRefreshClick = { viewModel.retryLiveStreamsForCurrentCategory() },
+                        onChannelClick = { channel ->
+                            viewModel.playLiveChannel(channel)
+                        },
+                        onChannelFocused = { streamId ->
+                            viewModel.onChannelFocused(streamId)
+                        }
+                    )
+                }
+            }
         } else {
             Column(
                 modifier = Modifier

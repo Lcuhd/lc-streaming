@@ -44,6 +44,60 @@ object XtreamStreamUrlBuilder {
     }
 
     /**
+     * Constrói a URL de reprodução de filmes VOD no padrão Xtream Codes:
+     * <DNS>/movie/<USERNAME>/<PASSWORD>/<STREAM_ID>.<CONTAINER_EXTENSION>
+     *
+     * @param rawDns DNS ou URL base cadastrada na lista
+     * @param username Usuário autenticado
+     * @param password Senha
+     * @param streamId ID do filme
+     * @param containerExtension Extensão do container (ex: "mp4", "mkv", "avi"). Padrão "mp4" se ausente
+     */
+    fun buildVodMovieUrl(
+        rawDns: String,
+        username: String,
+        password: String,
+        streamId: String,
+        containerExtension: String? = "mp4"
+    ): String {
+        val sanitizedDns = sanitizeDns(rawDns)
+        val cleanUser = username.trim()
+        val cleanPass = password.trim()
+        val cleanStreamId = streamId.trim()
+
+        val cleanExt = containerExtension?.trim()?.removePrefix(".")?.ifBlank { "mp4" } ?: "mp4"
+
+        return "$sanitizedDns/movie/$cleanUser/$cleanPass/$cleanStreamId.$cleanExt"
+    }
+
+    /**
+     * Constrói a URL de reprodução de episódios de séries no padrão Xtream Codes:
+     * <DNS>/series/<USERNAME>/<PASSWORD>/<EPISODE_ID>.<CONTAINER_EXTENSION>
+     *
+     * @param rawDns DNS ou URL base cadastrada na lista
+     * @param username Usuário autenticado
+     * @param password Senha
+     * @param episodeId ID do episódio fornecido pelo servidor
+     * @param containerExtension Extensão do container (ex: "mkv", "mp4", "avi"). Padrão "mkv" se ausente
+     */
+    fun buildSeriesEpisodeUrl(
+        rawDns: String,
+        username: String,
+        password: String,
+        episodeId: String,
+        containerExtension: String? = "mkv"
+    ): String {
+        val sanitizedDns = sanitizeDns(rawDns)
+        val cleanUser = username.trim()
+        val cleanPass = password.trim()
+        val cleanEpId = episodeId.trim()
+
+        val cleanExt = containerExtension?.trim()?.removePrefix(".")?.ifBlank { "mkv" } ?: "mkv"
+
+        return "$sanitizedDns/series/$cleanUser/$cleanPass/$cleanEpId.$cleanExt"
+    }
+
+    /**
      * Formata URLs alternativas de fallback caso a primeira extensão falhe (ex: .ts ou sem extensão)
      */
     fun buildAlternativeLiveUrls(

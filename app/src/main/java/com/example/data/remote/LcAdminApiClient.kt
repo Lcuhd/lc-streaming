@@ -87,14 +87,12 @@ class LcAdminApiClient {
 
     companion object {
         private const val TAG = "LCPlayer_Admin"
-        private const val ENDPOINT_STATUS_URL =
-            "https://lc-dashboard.lovable.app/api/public/device-status"
+        private const val BASE_URL = "https://lc-dashboard.lovable.app"
 
-        private const val ENDPOINT_LISTS_URL =
-            "https://lc-dashboard.lovable.app/api/public/device-lists"
+        private const val ENDPOINT_STATUS_URL = "$BASE_URL/api/public/device-status"
+        private const val ENDPOINT_LISTS_URL = "$BASE_URL/api/public/device-lists"
+        private const val ENDPOINT_DELETE_LIST_URL = "$BASE_URL/api/public/delete-device-list"
 
-        private const val ENDPOINT_DELETE_LIST_URL =
-            "https://lc-dashboard.lovable.app/api/public/delete-device-list"
         private const val API_KEY = "sb_publishable_lAEAcvcuQfOj6UeEg7rXcw_kLmCDoQH"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }

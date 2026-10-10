@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -51,8 +53,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -98,6 +102,9 @@ import kotlinx.coroutines.delay
 fun LivePlayerScreen(
     playerState: LivePlayerState,
     onBackClick: () -> Unit,
+    onPreviousChannel: () -> Unit = {},
+    onNextChannel: () -> Unit = {},
+    onSaveProgress: ((positionMs: Long, durationMs: Long, completed: Boolean) -> Unit)? = null,
     onPlayerStateChange: (isPlaying: Boolean, isBuffering: Boolean, error: String?) -> Unit,
     onRetryFallbackFormat: (extension: String) -> Unit,
     modifier: Modifier = Modifier
@@ -108,6 +115,7 @@ fun LivePlayerScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     var retryCount by remember { mutableStateOf(0) }
+    var hasExecutedInitialSeek by remember(playerState.playbackUrl) { mutableStateOf(false) }
 
     val backButtonFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -141,11 +149,25 @@ fun LivePlayerScreen(
                         val playing = exoPlayer.isPlaying
                         isPlaying = playing
                         onPlayerStateChange(playing, false, null)
+
+                        // Executa seek para posição salva se ainda não tiver sido executado
+                        if (!hasExecutedInitialSeek && playerState.startPositionMs > 0) {
+                            hasExecutedInitialSeek = true
+                            exoPlayer.seekTo(playerState.startPositionMs)
+                            android.util.Log.i(
+                                "LCPlayer_SeriesProgress",
+                                "Seek inicial para posição salva executado: ${playerState.startPositionMs}ms"
+                            )
+                        }
                     }
                     Player.STATE_ENDED -> {
                         isBuffering = false
                         isPlaying = false
                         onPlayerStateChange(false, false, null)
+                        if (playerState.seriesId != null) {
+                            val dur = exoPlayer.duration
+                            onSaveProgress?.invoke(if (dur > 0) dur else 0L, if (dur > 0) dur else 0L, true)
+                        }
                     }
                     Player.STATE_IDLE -> {
                         // Estado ocioso
@@ -180,9 +202,30 @@ fun LivePlayerScreen(
         exoPlayer.addListener(listener)
 
         onDispose {
+            if (playerState.seriesId != null) {
+                val pos = exoPlayer.currentPosition
+                val dur = exoPlayer.duration
+                if (pos > 0 && dur > 0) {
+                    val completed = pos >= 0.92 * dur
+                    onSaveProgress?.invoke(if (completed) dur else pos, dur, completed)
+                }
+            }
             exoPlayer.removeListener(listener)
             exoPlayer.stop()
             exoPlayer.release()
+        }
+    }
+
+    // Salvamento periódico do progresso local a cada 5 segundos durante reprodução de séries
+    LaunchedEffect(isPlaying) {
+        while (isPlaying && playerState.seriesId != null) {
+            delay(5000)
+            val pos = exoPlayer.currentPosition
+            val dur = exoPlayer.duration
+            if (pos > 0 && dur > 0) {
+                val completed = pos >= 0.92 * dur
+                onSaveProgress?.invoke(if (completed) dur else pos, dur, completed)
+            }
         }
     }
 
@@ -232,23 +275,24 @@ fun LivePlayerScreen(
                 isControlsVisible = !isControlsVisible
             }
             .onKeyEvent { keyEvent ->
-                // Tratamento de teclas do controle remoto da TV
+                if (keyEvent.type != KeyEventType.KeyDown) {
+                    return@onKeyEvent false
+                }
+                // Tratamento de teclas do controle remoto da TV (D-pad UP/DOWN troca de canal)
                 when (keyEvent.key) {
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                        if (!isControlsVisible) {
-                            isControlsVisible = true
-                            true
-                        } else {
-                            false
-                        }
+                    Key.DirectionUp, Key.ChannelUp, Key.PageUp -> {
+                        onPreviousChannel()
+                        isControlsVisible = true
+                        true
                     }
-                    Key.DirectionUp, Key.DirectionDown -> {
-                        if (!isControlsVisible) {
-                            isControlsVisible = true
-                            true
-                        } else {
-                            false
-                        }
+                    Key.DirectionDown, Key.ChannelDown, Key.PageDown -> {
+                        onNextChannel()
+                        isControlsVisible = true
+                        true
+                    }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        isControlsVisible = !isControlsVisible
+                        true
                     }
                     Key.MediaPlayPause -> {
                         if (exoPlayer.isPlaying) {
@@ -482,6 +526,8 @@ fun LivePlayerScreen(
                     channel = playerState.channel,
                     epgState = playerState.epgState,
                     isPlaying = isPlaying,
+                    onPreviousChannel = onPreviousChannel,
+                    onNextChannel = onNextChannel,
                     onPlayPauseToggle = {
                         if (exoPlayer.isPlaying) {
                             exoPlayer.pause()
@@ -599,6 +645,8 @@ private fun PlayerBottomControls(
     channel: com.example.domain.model.LiveStreamChannel,
     epgState: ShortEpgState? = null,
     isPlaying: Boolean,
+    onPreviousChannel: () -> Unit = {},
+    onNextChannel: () -> Unit = {},
     onPlayPauseToggle: () -> Unit,
     onRefresh: () -> Unit,
     playPauseFocusRequester: FocusRequester,
@@ -708,11 +756,35 @@ private fun PlayerBottomControls(
             }
         }
 
-        // Botões de Ação Play/Pause e Atualizar
+        // Botões de Ação: Canal Anterior, Play/Pause, Canal Próximo, Atualizar
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Botão Canal Anterior
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(TvSurface)
+                    .border(1.dp, TvSurfaceVariant, CircleShape)
+                    .tvFocusable(
+                        shape = CircleShape,
+                        focusBorderColor = TvFocusBorder,
+                        focusedScale = 1.1f,
+                        onClick = onPreviousChannel
+                    )
+                    .testTag("btn_player_prev_channel"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowUp,
+                    contentDescription = "Canal anterior",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
             // Botão Play/Pause
             Box(
                 modifier = Modifier
@@ -737,10 +809,35 @@ private fun PlayerBottomControls(
                 )
             }
 
+            // Botão Próximo Canal
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(TvSurface)
+                    .border(1.dp, TvSurfaceVariant, CircleShape)
+                    .tvFocusable(
+                        shape = CircleShape,
+                        focusBorderColor = TvFocusBorder,
+                        focusedScale = 1.1f,
+                        onClick = onNextChannel
+                    )
+                    .testTag("btn_player_next_channel"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Próximo canal",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // Botão Recarregar Stream
             // Botão Recarregar Stream
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .background(TvSurface)
                     .border(1.dp, TvSurfaceVariant, CircleShape)
