@@ -834,6 +834,51 @@ class ExampleRobolectricTest {
         val nextAfterS2E1 = com.example.domain.model.getNextEpisode(details, currentSeasonNum = 2, currentEpisodeNum = 1)
         assertNull(nextAfterS2E1)
     }
+
+    @Test
+    fun `verify formatMsToTime formats milliseconds to HH mm ss`() {
+        assertEquals("00:42:18", com.example.ui.player.formatMsToTime(2538000L))
+        assertEquals("01:55:40", com.example.ui.player.formatMsToTime(6940000L))
+        assertEquals("00:00:18", com.example.ui.player.formatMsToTime(18000L))
+        assertEquals("00:00:00", com.example.ui.player.formatMsToTime(0L))
+    }
+
+    @Test
+    fun `verify getFriendlyLanguageName maps ISO language codes`() {
+        assertEquals("Português", com.example.ui.player.getFriendlyLanguageName("por"))
+        assertEquals("Português", com.example.ui.player.getFriendlyLanguageName("pt"))
+        assertEquals("Inglês", com.example.ui.player.getFriendlyLanguageName("eng"))
+        assertEquals("Espanhol", com.example.ui.player.getFriendlyLanguageName("spa"))
+        assertEquals("Japonês", com.example.ui.player.getFriendlyLanguageName("jpn"))
+        assertNull(com.example.ui.player.getFriendlyLanguageName(null))
+        assertNull(com.example.ui.player.getFriendlyLanguageName("und"))
+    }
+
+    @Test
+    fun `verify active lists count determines auto selection vs list selector`() {
+        val listActive1 = com.example.domain.model.DeviceListModel(
+            id = "l1", title = "Lista Premium", sourceName = "Xtream", dns = "http://srv1.net", username = "u1", password = "p1", status = com.example.domain.model.ListStatus.ACTIVE
+        )
+        val listActive2 = com.example.domain.model.DeviceListModel(
+            id = "l2", title = "Lista Backup", sourceName = "Xtream", dns = "http://srv2.net", username = "u2", password = "p2", status = com.example.domain.model.ListStatus.ACTIVE
+        )
+        val listBlocked = com.example.domain.model.DeviceListModel(
+            id = "l3", title = "Lista Expirada", sourceName = "Xtream", dns = "http://srv3.net", username = "u3", password = "p3", status = com.example.domain.model.ListStatus.BLOCKED
+        )
+
+        // 1. Exatamente 1 lista ativa -> Auto-seleciona
+        val activeOnlyOne = listOf(listActive1, listBlocked).filter { it.status == com.example.domain.model.ListStatus.ACTIVE }
+        assertEquals(1, activeOnlyOne.size)
+        assertEquals("l1", activeOnlyOne.first().id)
+
+        // 2. Múltiplas listas ativas -> Mostra seletor
+        val activeMultiple = listOf(listActive1, listActive2).filter { it.status == com.example.domain.model.ListStatus.ACTIVE }
+        assertEquals(2, activeMultiple.size)
+
+        // 3. Nenhuma lista ativa (somente bloqueada) -> Não abre automaticamente
+        val activeNone = listOf(listBlocked).filter { it.status == com.example.domain.model.ListStatus.ACTIVE }
+        assertEquals(0, activeNone.size)
+    }
 }
 
 

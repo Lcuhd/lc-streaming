@@ -34,6 +34,7 @@ data class ActivationUiState(
     val isLoadingLists: Boolean = false,
     val listsFeedbackMessage: String? = null,
     val selectedListId: String? = null,
+    val isAutoSelectedList: Boolean = false,
 
     // Controle de exclusão de lista com confirmação obrigatória
     val listPendingDeletion: DeviceListModel? = null,

@@ -88,7 +88,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
             // Se o aparelho já estiver ativo no banco local, carrega as listas previamente
             if (credentials.status == ActivationStatus.ACTIVE) {
-                fetchDeviceLists(navigateToSectionIfActive = false)
+                fetchDeviceLists(navigateToSectionIfActive = true)
             }
         }
     }
@@ -168,8 +168,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * Consulta o endpoint /api/public/device-lists para carregar as múltiplas listas
-     * vinculadas a este dispositivo.
+     * Consulta o endpoint /api/public/device-lists para carregar as listas
+     * e aplica a regra de seleção automática quando houver exatamente 1 lista ativa.
      */
     fun fetchDeviceLists(navigateToSectionIfActive: Boolean = false) {
         if (_uiState.value.isLoadingLists) {
@@ -187,24 +187,46 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
             when (response) {
                 is LcAdminListsResponse.Success -> {
-                    Log.i(TAG, "Listas recebidas com sucesso. Quantidade: ${response.lists.size}, status do dispositivo: ${response.deviceStatus}")
-                    _uiState.update {
-                        val shouldNavigate = (response.deviceStatus == ActivationStatus.ACTIVE) &&
-                                (navigateToSectionIfActive || it.currentSection == AppScreenSection.MY_LISTS)
+                    val activeLists = response.lists.filter { l -> l.status == ListStatus.ACTIVE }
+                    Log.i(
+                        TAG,
+                        "Listas recebidas com sucesso. Total: ${response.lists.size}, Ativas: ${activeLists.size}, status do dispositivo: ${response.deviceStatus}"
+                    )
 
-                        it.copy(
-                            isLoadingLists = false,
-                            status = response.deviceStatus,
-                            lists = response.lists,
-                            listsFeedbackMessage = response.displayMessage,
-                            currentSection = if (shouldNavigate) AppScreenSection.MY_LISTS else it.currentSection
-                        )
+                    val currentSec = _uiState.value.currentSection
+                    val shouldNavigate = (response.deviceStatus == ActivationStatus.ACTIVE) &&
+                            (navigateToSectionIfActive || currentSec == AppScreenSection.MY_LISTS || currentSec == AppScreenSection.ACTIVATION)
+
+                    if (shouldNavigate && activeLists.size == 1) {
+                        val singleActiveList = activeLists.first()
+                        Log.i(TAG, "Exatamente 1 lista ativa encontrada ('${singleActiveList.title}'). Selecionando e abrindo automaticamente o conteúdo.")
+                        _uiState.update { state ->
+                            state.copy(
+                                isLoadingLists = false,
+                                status = response.deviceStatus,
+                                lists = response.lists,
+                                listsFeedbackMessage = response.displayMessage,
+                                isAutoSelectedList = true
+                            )
+                        }
+                        openContentCategories(singleActiveList)
+                    } else {
+                        _uiState.update { state ->
+                            state.copy(
+                                isLoadingLists = false,
+                                status = response.deviceStatus,
+                                lists = response.lists,
+                                listsFeedbackMessage = response.displayMessage,
+                                isAutoSelectedList = false,
+                                currentSection = if (shouldNavigate) AppScreenSection.MY_LISTS else state.currentSection
+                            )
+                        }
                     }
                 }
                 is LcAdminListsResponse.Error -> {
                     Log.w(TAG, "Erro ao consultar listas: code=${response.httpCode}, msg='${response.displayMessage}'")
-                    _uiState.update {
-                        it.copy(
+                    _uiState.update { state ->
+                        state.copy(
                             isLoadingLists = false,
                             listsFeedbackMessage = response.displayMessage,
                             toastFeedback = response.displayMessage
@@ -414,10 +436,13 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
         Log.d(TAG, "Abrindo catálogo de categorias para a lista '${list.title}' (ID: ${list.id})")
 
+        val wasOnMyLists = _uiState.value.currentSection == AppScreenSection.MY_LISTS
+
         // Reseta o estado para garantir que dados de outras listas não apareçam
         _uiState.update {
             it.copy(
                 selectedListId = list.id,
+                isAutoSelectedList = if (wasOnMyLists) false else it.isAutoSelectedList,
                 currentSection = AppScreenSection.CONTENT_CATEGORIES,
                 contentCategoriesState = ListContentCategoriesState(
                     listId = list.id,
@@ -1718,12 +1743,16 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * Retorna à tela de Minhas Listas e limpa o cache de categorias em memória.
+     * Fecha a tela de catálogo de categorias.
+     * Se a lista foi selecionada automaticamente (apenas 1 lista ativa disponível),
+     * retorna para a tela de Ativação / Home para evitar navegar para um seletor desnecessário.
+     * Se havia 2 ou mais listas ativas, retorna normalmente para a tela de Minhas Listas.
      */
     fun closeContentCategories() {
+        val isAuto = _uiState.value.isAutoSelectedList
         _uiState.update {
             it.copy(
-                currentSection = AppScreenSection.MY_LISTS,
+                currentSection = if (isAuto) AppScreenSection.ACTIVATION else AppScreenSection.MY_LISTS,
                 contentCategoriesState = null
             )
         }
