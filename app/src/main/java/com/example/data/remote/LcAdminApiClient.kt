@@ -327,7 +327,7 @@ class LcAdminApiClient {
         Log.d(TAG, "Status do dispositivo retornado em /device-lists: '$rawStatus'")
 
         val deviceStatus = when (rawStatus) {
-            "active", "ativo" -> ActivationStatus.ACTIVE
+            "active", "ativo", "ok", "success", "1" -> ActivationStatus.ACTIVE
             "blocked", "bloqueado" -> ActivationStatus.BLOCKED
             "expired", "vencido" -> ActivationStatus.EXPIRED
             else -> ActivationStatus.WAITING_ACTIVATION

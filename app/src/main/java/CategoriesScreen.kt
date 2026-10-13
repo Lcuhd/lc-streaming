@@ -1,0 +1,1245 @@
+
+package com.example.ui.categories
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.R
+import com.example.domain.model.CategoryType
+import com.example.domain.model.ListContentCategoriesState
+import com.example.domain.model.XtreamCategory
+import com.example.ui.activation.ActivationViewModel
+import com.example.ui.components.tvFocusable
+import com.example.ui.theme.AppCorners
+import com.example.ui.theme.AppSpacing
+import com.example.ui.theme.TvBackground
+import com.example.ui.theme.TvCardBackground
+import com.example.ui.theme.TvFocusBorder
+import com.example.ui.theme.TvPrimaryBlue
+import com.example.ui.theme.TvSecondaryBlue
+import com.example.ui.theme.TvSurface
+import com.example.ui.theme.TvSurfaceVariant
+import com.example.ui.theme.TvTextMuted
+import com.example.ui.theme.TvTextSecondary
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * Tela Principal de Entrada e exploração do catálogo do LC Player.
+ * Estruturada com base no princípio de navegação limpa do IPTV Smarters:
+ * - Áreas principais: TV ONLINE (Esq, Altura Dupla) | FILMES (Dir Topo) / SÉRIES (Dir Baixo)
+ * - Configurações: Ação discreta inferior (Pill button)
+ * - Leitura limpa, poucas opções, sem contagens numéricas e sem poluição visual.
+ */
+@Composable
+fun CategoriesScreen(
+    viewModel: ActivationViewModel,
+    modifier: Modifier = Modifier
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val categoriesState = uiState.contentCategoriesState
+    val snackbarHostState = remember { SnackbarHostState() }
+    val initialFocusRequester = remember { FocusRequester() }
+    var showDeviceInfoDialog by remember { mutableStateOf(false) }
+    var isInnerCategoryExplorerOpen by remember { mutableStateOf(false) }
+    var pendingDirectOpen by remember { mutableStateOf<CategoryType?>(null) }
+
+    // Reage SOMENTE a uma ação explícita do usuário na Home (pendingDirectOpen != null)
+    LaunchedEffect(
+        pendingDirectOpen,
+        categoriesState?.isLiveLoaded,
+        categoriesState?.isVodLoaded,
+        categoriesState?.isSeriesLoaded,
+        categoriesState?.liveCategories,
+        categoriesState?.vodCategories,
+        categoriesState?.seriesCategories,
+        categoriesState?.liveError,
+        categoriesState?.vodError,
+        categoriesState?.seriesError,
+        categoriesState?.selectedCategoryForChannels
+    ) {
+        val targetSection = pendingDirectOpen ?: return@LaunchedEffect
+
+        if (categoriesState?.selectedCategoryForChannels == null) {
+            when (targetSection) {
+                CategoryType.LIVE -> {
+                    if (categoriesState?.isLiveLoaded == true) {
+                        val firstLive = categoriesState.liveCategories.firstOrNull()
+                        pendingDirectOpen = null
+                        if (firstLive != null) {
+                            viewModel.openCategory(firstLive)
+                        }
+                    } else if (categoriesState?.liveError != null) {
+                        pendingDirectOpen = null
+                    }
+                }
+                CategoryType.VOD -> {
+                    if (categoriesState?.isVodLoaded == true) {
+                        val firstVod = categoriesState.vodCategories.firstOrNull()
+                        pendingDirectOpen = null
+                        if (firstVod != null) {
+                            viewModel.openCategory(firstVod)
+                        }
+                    } else if (categoriesState?.vodError != null) {
+                        pendingDirectOpen = null
+                    }
+                }
+                CategoryType.SERIES -> {
+                    if (categoriesState?.isSeriesLoaded == true) {
+                        val firstSeries = categoriesState.seriesCategories.firstOrNull()
+                        pendingDirectOpen = null
+                        if (firstSeries != null) {
+                            viewModel.openCategory(firstSeries)
+                        }
+                    } else if (categoriesState?.seriesError != null) {
+                        pendingDirectOpen = null
+                    }
+                }
+            }
+        }
+    }
+
+    BackHandler {
+        if (categoriesState?.seriesDetailsState != null) {
+            viewModel.closeSeriesDetails()
+        } else if (categoriesState?.selectedCategoryForChannels != null) {
+            pendingDirectOpen = null
+            when (categoriesState.selectedCategoryForChannels?.type) {
+                CategoryType.VOD -> viewModel.closeVodCategoryMovies()
+                CategoryType.SERIES -> viewModel.closeSeriesCategory()
+                else -> viewModel.closeLiveCategoryChannels()
+            }
+        } else if (isInnerCategoryExplorerOpen) {
+            isInnerCategoryExplorerOpen = false
+        } else {
+            pendingDirectOpen = null
+            viewModel.closeContentCategories()
+        }
+    }
+
+    LaunchedEffect(uiState.toastFeedback) {
+        uiState.toastFeedback?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearToastFeedback()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            initialFocusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
+
+    if (categoriesState == null) {
+        LaunchedEffect(Unit) {
+            viewModel.closeContentCategories()
+        }
+        return
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF050810),
+                        TvBackground,
+                        Color(0xFF03050C)
+                    )
+                )
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(450.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0x180084FF), Color.Transparent)
+                    )
+                )
+        )
+
+        // Se o detalhe de uma série estiver aberto ou se uma categoria foi selecionada
+        if (categoriesState.seriesDetailsState != null) {
+            SeriesDetailsView(
+                detailsState = categoriesState.seriesDetailsState,
+                onBackClick = { viewModel.closeSeriesDetails() },
+                onPrimaryButtonClick = { viewModel.openPrimarySeriesButton() },
+                onSelectSeason = { seasonNum -> viewModel.selectSeasonForSeries(seasonNum) },
+                onEpisodeClick = { episode -> viewModel.playSeriesEpisode(episode) },
+                onRetryClick = { viewModel.retrySeriesDetails() }
+            )
+        } else if (categoriesState.selectedCategoryForChannels != null) {
+            val selectedCat = categoriesState.selectedCategoryForChannels!!
+            when (selectedCat.type) {
+                CategoryType.VOD -> {
+                    CategoryVodMoviesView(
+                        category = selectedCat,
+                        allCategories = categoriesState.vodCategories,
+                        onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
+                        vodState = categoriesState.vodStreamsState,
+                        listTitle = categoriesState.listTitle,
+                        onBackClick = {
+                            pendingDirectOpen = null
+                            viewModel.closeVodCategoryMovies()
+                        },
+                        onRefreshClick = { viewModel.retryVodStreamsForCurrentCategory() },
+                        onMovieClick = { movie ->
+                            viewModel.playVodMovie(movie)
+                        }
+                    )
+                }
+                CategoryType.SERIES -> {
+                    CategorySeriesView(
+                        category = selectedCat,
+                        allCategories = categoriesState.seriesCategories,
+                        onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
+                        seriesState = categoriesState.seriesState,
+                        listTitle = categoriesState.listTitle,
+                        onBackClick = {
+                            pendingDirectOpen = null
+                            viewModel.closeSeriesCategory()
+                        },
+                        onRefreshClick = { viewModel.retrySeriesForCurrentCategory() },
+                        onSeriesClick = { series ->
+                            viewModel.openSeriesDetails(series)
+                        }
+                    )
+                }
+                CategoryType.LIVE -> {
+                    val activeList = uiState.lists.firstOrNull { it.id == categoriesState.listId } ?: uiState.lists.firstOrNull()
+
+                    CategoryChannelsView(
+                        category = selectedCat,
+                        allCategories = categoriesState.liveCategories,
+                        activeList = activeList,
+                        onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
+                        streamsState = categoriesState.liveStreamsState,
+                        channelEpgStates = uiState.channelEpgStates,
+                        listTitle = categoriesState.listTitle,
+                        onBackClick = {
+                            pendingDirectOpen = null
+                            viewModel.closeLiveCategoryChannels()
+                        },
+                        onRefreshClick = { viewModel.retryLiveStreamsForCurrentCategory() },
+                        onChannelClick = { channel ->
+                            viewModel.playLiveChannel(channel)
+                        },
+                        onChannelFocused = { streamId ->
+                            viewModel.onChannelFocused(streamId)
+                        }
+                    )
+                }
+            }
+        } else if (isInnerCategoryExplorerOpen) {
+            // EXPLORADOR DEDICADO DE CATEGORIAS
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = AppSpacing.xl, top = AppSpacing.md, end = AppSpacing.xl, bottom = AppSpacing.md),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CategoryExplorerHeaderBar(
+                    selectedTab = categoriesState.selectedTab,
+                    listTitle = categoriesState.listTitle,
+                    isRefreshing = categoriesState.isAnyLoading,
+                    onBackClick = { isInnerCategoryExplorerOpen = false },
+                    onRefreshClick = { viewModel.refreshAllCategoriesForCurrentList() },
+                    onInfoClick = { showDeviceInfoDialog = true }
+                )
+
+                Spacer(modifier = Modifier.height(AppSpacing.md))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    CategoryGridContent(
+                        categoriesState = categoriesState,
+                        selectedTab = categoriesState.selectedTab,
+                        onRetryType = { viewModel.refreshCategoryType(it) },
+                        onCategoryClick = { category ->
+                            viewModel.openCategory(category)
+                        }
+                    )
+                }
+
+                DiscreetFooterBar(deviceId = uiState.deviceId)
+            }
+        } else {
+            // HOME PORTA DE ENTRADA (MANTÉM O VISUAL APROVADO 100% PRESERVADO)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = AppSpacing.xl, top = AppSpacing.md, end = AppSpacing.xl, bottom = AppSpacing.md),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CompactCategoriesHeaderBar(
+                    listTitle = categoriesState.listTitle,
+                    sourceName = categoriesState.sourceName,
+                    isConnected = categoriesState.liveError == null || categoriesState.vodError == null || categoriesState.seriesError == null,
+                    onBackClick = { viewModel.closeContentCategories() }
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CategoriesHubPanel(
+                        selectedTab = categoriesState.selectedTab,
+                        onSelectTab = { categoryType ->
+                            viewModel.selectCategoryTab(categoryType)
+                            viewModel.ensureCategoriesLoaded(categoryType)
+                            pendingDirectOpen = categoryType
+                        },
+                        onInfoClick = { showDeviceInfoDialog = true },
+                        initialFocusRequester = initialFocusRequester
+                    )
+                }
+
+                DiscreetFooterBar(deviceId = uiState.deviceId)
+            }
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = AppSpacing.xl)
+        )
+
+        if (showDeviceInfoDialog) {
+            DeviceInfoDialog(
+                deviceId = uiState.deviceId,
+                key = uiState.key,
+                deviceStatus = uiState.status.title,
+                currentListTitle = categoriesState.listTitle,
+                sourceName = categoriesState.sourceName,
+                onDismiss = { showDeviceInfoDialog = false }
+            )
+        }
+    }
+}
+
+/**
+ * TOPO COMPACTO:
+ * LC Player
+ * Provedor • Servidor • Status
+ * Hora | Data
+ */
+@Composable
+private fun CompactCategoriesHeaderBar(
+    listTitle: String,
+    sourceName: String,
+    isConnected: Boolean,
+    onBackClick: () -> Unit
+) {
+    var currentTimeText by remember { mutableStateOf("") }
+    var currentDateText by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        while (isActive) {
+            val now = Date()
+            currentTimeText = timeFormat.format(now)
+            currentDateText = dateFormat.format(now)
+            delay(1000)
+        }
+    }
+
+    val statusText = if (isConnected) "● Online" else "● Indisponível"
+
+    val displayServerInfo = if (sourceName.isNotBlank() && sourceName != listTitle) {
+        "$sourceName • $listTitle • $statusText"
+    } else {
+        "$listTitle • $statusText"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 880.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(AppCorners.md)
+                        .background(TvSurfaceVariant)
+                        .tvFocusable(
+                            shape = AppCorners.md,
+                            focusBorderColor = TvFocusBorder,
+                            onClick = onBackClick
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Voltar",
+                        tint = TvSecondaryBlue,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Marca LC Player
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "LC",
+                        color = TvSecondaryBlue,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "Player",
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+            }
+
+            // Hora | Data
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (currentTimeText.isNotBlank()) {
+                    Text(
+                        text = currentTimeText,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                if (currentDateText.isNotBlank()) {
+                    Text(
+                        text = currentDateText,
+                        color = TvTextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+
+        // Subcabeçalho de Contexto (Provedor • Lista • Status)
+        Text(
+            text = displayServerInfo,
+            color = TvTextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 46.dp)
+        )
+    }
+}
+
+/**
+ * Cabeçalho do Explorador Dedicado de Categorias (exibido ao selecionar TV ONLINE, FILMES ou SÉRIES).
+ */
+@Composable
+private fun CategoryExplorerHeaderBar(
+    selectedTab: CategoryType,
+    listTitle: String,
+    isRefreshing: Boolean,
+    onBackClick: () -> Unit,
+    onRefreshClick: () -> Unit,
+    onInfoClick: () -> Unit
+) {
+    val sectionTitle = when (selectedTab) {
+        CategoryType.LIVE -> "Categorias de TV ao vivo"
+        CategoryType.VOD -> "Categorias de Filmes"
+        CategoryType.SERIES -> "Categorias de Séries"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 880.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(AppCorners.md)
+                    .background(TvSurfaceVariant)
+                    .tvFocusable(
+                        shape = AppCorners.md,
+                        focusBorderColor = TvFocusBorder,
+                        onClick = onBackClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Voltar para a Home",
+                    tint = TvSecondaryBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Column {
+                Text(
+                    text = sectionTitle,
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "LC Player • $listTitle",
+                    color = TvTextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .height(38.dp)
+                    .clip(AppCorners.md)
+                    .background(if (isRefreshing) Color(0xFF1B2433) else TvSurfaceVariant)
+                    .border(1.dp, if (isRefreshing) TvFocusBorder else Color(0x330084FF), AppCorners.md)
+                    .tvFocusable(
+                        enabled = !isRefreshing,
+                        shape = AppCorners.md,
+                        focusBorderColor = TvFocusBorder,
+                        onClick = if (!isRefreshing) onRefreshClick else null
+                    )
+                    .padding(horizontal = 14.dp)
+                    .testTag("btn_refresh_categories"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            color = TvSecondaryBlue,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Atualizar",
+                            tint = TvSecondaryBlue,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    Text(
+                        text = if (isRefreshing) "Carregando..." else "Atualizar",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .height(38.dp)
+                    .clip(AppCorners.md)
+                    .background(TvSurfaceVariant)
+                    .border(1.dp, Color(0x22FFFFFF), AppCorners.md)
+                    .tvFocusable(
+                        shape = AppCorners.md,
+                        focusBorderColor = TvFocusBorder,
+                        onClick = onInfoClick
+                    )
+                    .padding(horizontal = 12.dp)
+                    .testTag("btn_device_info"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Informações",
+                        tint = TvTextSecondary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = "Info",
+                        color = TvTextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * PAINEL CENTRALIZADO DA HOME:
+ * TV ONLINE (Esq, Dominante) | FILMES (Dir Topo) / SÉRIES (Dir Baixo)
+ * CONFIGURAÇÕES (Ação discreta em pill button na base)
+ */
+@Composable
+private fun CategoriesHubPanel(
+    selectedTab: CategoryType,
+    onSelectTab: (CategoryType) -> Unit,
+    onInfoClick: () -> Unit,
+    initialFocusRequester: FocusRequester
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth(0.72f).widthIn(max = 700.dp)) {
+        val isWideLayout = this.maxWidth >= 600.dp
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (isWideLayout) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(190.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // TV ONLINE (Esq, Dominante)
+                        HomeSectionAreaCard(
+                            title = "",
+                            subtitle = "",
+                            icon = Icons.Default.LiveTv,
+                            bgResId = R.drawable.bg_home_live,
+                            gradientColors = listOf(Color(0xFF063A3D), Color(0xFF031C22)),
+                            glowBorderColor = Color(0xFF00E5FF),
+                            isSelected = selectedTab == CategoryType.LIVE,
+                            isDominant = true,
+                            modifier = Modifier
+                                .weight(1.1f)
+                                .fillMaxSize()
+                                .focusRequester(initialFocusRequester),
+                            onClick = { onSelectTab(CategoryType.LIVE) }
+                        )
+
+                        // FILMES & SÉRIES (Coluna Direita Empilhada)
+                        Column(
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            HomeSectionAreaCard(
+                                title = "",
+                                subtitle = "",
+                                icon = Icons.Default.Movie,
+                                bgResId = R.drawable.bg_home_movies,
+                                gradientColors = listOf(Color(0xFF4A101C), Color(0xFF23070E)),
+                                glowBorderColor = Color(0xFFFF3B5C),
+                                isSelected = selectedTab == CategoryType.VOD,
+                                isDominant = false,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                onClick = { onSelectTab(CategoryType.VOD) }
+                            )
+
+                            HomeSectionAreaCard(
+                                title = "",
+                                subtitle = "",
+                                icon = Icons.Default.VideoLibrary,
+                                bgResId = R.drawable.bg_home_series,
+                                gradientColors = listOf(Color(0xFF22164A), Color(0xFF100A26)),
+                                glowBorderColor = Color(0xFF7044FF),
+                                isSelected = selectedTab == CategoryType.SERIES,
+                                isDominant = false,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                onClick = { onSelectTab(CategoryType.SERIES) }
+                            )
+                        }
+                    }
+
+                    // CONFIGURAÇÕES (Ação discreta abaixo das áreas principais)
+                    Box(
+                        modifier = Modifier
+                            .clip(AppCorners.pill)
+                            .background(Color(0xFF0D1C33))
+                            .border(1.dp, Color(0xFF0084FF), AppCorners.pill)
+                            .tvFocusable(
+                                shape = AppCorners.pill,
+                                focusBorderColor = Color.White,
+                                focusedScale = 1.05f,
+                                onClick = onInfoClick
+                            )
+                            .padding(horizontal = AppSpacing.xl, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Configurações",
+                                tint = TvSecondaryBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Configurações",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            } else {
+                // MOBILE VERTICAL (Retrato)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    HomeSectionAreaCard(
+                        title = "TV ONLINE",
+                        subtitle = "",
+                        icon = Icons.Default.LiveTv,
+                        bgResId = R.drawable.bg_home_live,
+                        gradientColors = listOf(Color(0xFF063A3D), Color(0xFF031C22)),
+                        glowBorderColor = Color(0xFF00E5FF),
+                        isDominant = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(95.dp)
+                            .focusRequester(initialFocusRequester),
+                        onClick = { onSelectTab(CategoryType.LIVE) }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        HomeSectionAreaCard(
+                            title = "FILMES",
+                            subtitle = "",
+                            icon = Icons.Default.Movie,
+                            bgResId = R.drawable.bg_home_movies,
+                            gradientColors = listOf(Color(0xFF4A101C), Color(0xFF23070E)),
+                            glowBorderColor = Color(0xFFFF3B5C),
+                            isDominant = false,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(85.dp),
+                            onClick = { onSelectTab(CategoryType.VOD) }
+                        )
+
+                        HomeSectionAreaCard(
+                            title = "SÉRIES",
+                            subtitle = "",
+                            icon = Icons.Default.VideoLibrary,
+                            bgResId = R.drawable.bg_home_series,
+                            gradientColors = listOf(Color(0xFF22164A), Color(0xFF100A26)),
+                            glowBorderColor = Color(0xFF7044FF),
+                            isDominant = false,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(85.dp),
+                            onClick = { onSelectTab(CategoryType.SERIES) }
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(AppCorners.pill)
+                            .background(Color(0xFF0D1C33))
+                            .border(1.dp, Color(0xFF0084FF), AppCorners.pill)
+                            .tvFocusable(
+                                shape = AppCorners.pill,
+                                focusBorderColor = Color.White,
+                                onClick = onInfoClick
+                            )
+                            .padding(horizontal = AppSpacing.xl, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Configurações",
+                                tint = TvSecondaryBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Configurações",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable
+private fun HomeSectionAreaCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    gradientColors: List<Color>,
+    glowBorderColor: Color = Color(0x33FFFFFF),
+    isDominant: Boolean = false,
+    onClick: () -> Unit = {},
+    isSelected: Boolean = false,
+    bgResId: Int? = null,
+    modifier: Modifier = Modifier
+) {
+    val borderColor =
+        if (isSelected) Color.White
+        else glowBorderColor.copy(alpha = 0.5f)
+
+    val borderWidth = if (isSelected) 2.dp else 1.2.dp
+
+    Box(
+        modifier = modifier
+            .clip(AppCorners.lg)
+            .background(Brush.linearGradient(gradientColors))
+            .border(borderWidth, borderColor, AppCorners.lg)
+            .tvFocusable(
+                shape = AppCorners.lg,
+                focusBorderColor = Color.White,
+                focusGlowColor = glowBorderColor.copy(alpha = 0.6f),
+                focusedScale = 1.03f,
+                onClick = onClick
+            )
+    ) {
+        if (bgResId != null) {
+            Image(
+                painter = painterResource(id = bgResId),
+                contentDescription = title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = AppSpacing.lg,
+                    vertical = AppSpacing.xs
+                )
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = AppSpacing.md)
+                        .size(if (isDominant) 32.dp else 26.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x22FFFFFF))
+                        .border(
+                            1.dp,
+                            Color(0x33FFFFFF),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Acessar $title",
+                        tint = Color.White,
+                        modifier = Modifier.size(
+                            if (isDominant) 18.dp else 14.dp
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+/**
+ * RODAPÉ DISCRETO:
+ * Exibe unicamente o Dispositivo / MAC.
+ */
+@Composable
+private fun DiscreetFooterBar(deviceId: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Dispositivo: $deviceId",
+            color = TvTextMuted,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun CategoryGridContent(
+    categoriesState: ListContentCategoriesState,
+    selectedTab: CategoryType,
+    onRetryType: (CategoryType) -> Unit,
+    onCategoryClick: (XtreamCategory) -> Unit
+) {
+    val (categoriesList, isLoading, errorMessage) = when (selectedTab) {
+        CategoryType.LIVE -> Triple(categoriesState.liveCategories, categoriesState.isLoadingLive, categoriesState.liveError)
+        CategoryType.VOD -> Triple(categoriesState.vodCategories, categoriesState.isLoadingVod, categoriesState.vodError)
+        CategoryType.SERIES -> Triple(categoriesState.seriesCategories, categoriesState.isLoadingSeries, categoriesState.seriesError)
+    }
+
+    when {
+        isLoading -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = TvPrimaryBlue,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(38.dp)
+                    )
+                    Text(
+                        text = "Carregando categorias...",
+                        color = TvTextSecondary,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+        errorMessage != null -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        tint = Color(0xFFFF5252),
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = errorMessage,
+                        color = TvTextSecondary,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Box(
+                        modifier = Modifier
+                            .height(36.dp)
+                            .clip(AppCorners.md)
+                            .background(TvPrimaryBlue)
+                            .tvFocusable(
+                                shape = AppCorners.md,
+                                onClick = { onRetryType(selectedTab) }
+                            )
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Tentar Novamente",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+        categoriesList.isEmpty() -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Inbox,
+                        contentDescription = null,
+                        tint = TvTextMuted,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = "Nenhuma categoria encontrada",
+                        color = TvTextMuted,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+        else -> {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 200.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 880.dp),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(categoriesList, key = { it.categoryId }) { category ->
+                    CategoryTileCard(
+                        category = category,
+                        onClick = { onCategoryClick(category) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryTileCard(
+    category: XtreamCategory,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(AppCorners.md)
+            .background(TvCardBackground)
+            .border(1.dp, TvSurfaceVariant, AppCorners.md)
+            .tvFocusable(
+                shape = AppCorners.md,
+                focusBorderColor = TvFocusBorder,
+                focusedScale = 1.04f,
+                onClick = onClick
+            )
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = category.categoryName,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = null,
+                tint = TvSecondaryBlue,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeviceInfoDialog(
+    deviceId: String,
+    key: String,
+    deviceStatus: String,
+    currentListTitle: String,
+    sourceName: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = TvSurface,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    tint = TvSecondaryBlue
+                )
+                Text(
+                    text = "Informações da Sessão",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.md)) {
+                InfoRow(label = "Lista Ativa", value = currentListTitle)
+                InfoRow(label = "Servidor", value = sourceName)
+                InfoRow(label = "Status Aparelho", value = deviceStatus)
+                InfoRow(label = "Device ID", value = deviceId)
+                InfoRow(label = "KEY", value = key)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .clip(AppCorners.sm)
+                    .tvFocusable(
+                        shape = AppCorners.sm,
+                        onClick = onDismiss
+                    )
+            ) {
+                Text(
+                    text = stringResource(R.string.btn_close),
+                    color = TvSecondaryBlue,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            color = TvTextSecondary,
+            fontSize = 13.sp
+        )
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+

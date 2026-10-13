@@ -58,11 +58,14 @@ class MainActivity : ComponentActivity() {
                         AppScreenSection.LIVE_PLAYER -> {
                             val playerState = uiState.livePlayerState
                             if (playerState != null) {
+                                val liveChannels = uiState.contentCategoriesState?.liveStreamsState?.channels ?: emptyList()
                                 LivePlayerScreen(
                                     playerState = playerState,
+                                    categoryChannels = liveChannels,
                                     onBackClick = { activationViewModel.closeLivePlayer() },
                                     onPreviousChannel = { activationViewModel.playPreviousChannel() },
                                     onNextChannel = { activationViewModel.playNextChannel() },
+                                    onSelectChannel = { channel -> activationViewModel.playLiveChannel(channel) },
                                     onSaveProgress = { pos, dur, completed ->
                                         activationViewModel.savePlayerEpisodeProgress(pos, dur, completed)
                                     },

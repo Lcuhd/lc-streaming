@@ -2,12 +2,13 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// LC Player TV Theme Colors
-val TvBackground = Color(0xFF090D16)
-val TvSurface = Color(0xFF111724)
-val TvSurfaceVariant = Color(0xFF192233)
-val TvSurfaceElevated = Color(0xFF212C41)
-val TvCardBackground = Color(0xFF131A27)
+// LC Player Theme Colors (Alinhado com a referência do Mockup)
+val TvBackground = Color(0xFF060A12)
+val TvSurface = Color(0xFF141F36)
+val TvSurfaceVariant = Color(0xFF1B2A45)
+val TvSurfaceElevated = Color(0xFF1B2842)
+val TvCardBackground = Color(0xFF0E1626)
+val TvSidebarBackground = Color(0xFF0A111F)
 
 // Accent blues
 val TvPrimaryBlue = Color(0xFF0084FF)

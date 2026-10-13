@@ -9,8 +9,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,29 +26,26 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +66,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.domain.model.ActivationStatus
 import com.example.ui.components.tvFocusable
+import com.example.ui.theme.AppCorners
+import com.example.ui.theme.AppSpacing
 import com.example.ui.theme.StatusActiveBg
 import com.example.ui.theme.StatusActiveBorder
 import com.example.ui.theme.StatusActiveText
@@ -87,16 +88,32 @@ import com.example.ui.theme.TvCardBackground
 import com.example.ui.theme.TvFocusBorder
 import com.example.ui.theme.TvPrimaryBlue
 import com.example.ui.theme.TvSecondaryBlue
+import com.example.ui.theme.TvSidebarBackground
 import com.example.ui.theme.TvSurface
 import com.example.ui.theme.TvSurfaceVariant
 import com.example.ui.theme.TvTextMuted
 import com.example.ui.theme.TvTextPrimary
 import com.example.ui.theme.TvTextSecondary
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Função utilitária para identificar se o dispositivo é Android TV / TV Box.
+ */
+fun isTvDevice(context: Context): Boolean {
+    val pm = context.packageManager
+    return pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+           pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEVISION)
+}
+
+/**
+ * Tela de Ativação / Identificação do Dispositivo com linguagem visual baseada no Mockup oficial LC Player.
+ *
+ * Estrutura:
+ * - Área Principal (65-70% em Landscape): Logotipo da marca, "Ative seu dispositivo", Device ID/MAC, KEY, Link do Painel e Ações.
+ * - Sidebar Profunda (30-35% em Landscape / Bloco inferior em Portrait): "COMO ATIVAR" em passos e espaço reservado para QR Code.
+ */
 @Composable
 fun ActivationScreen(
     viewModel: ActivationViewModel,
@@ -104,6 +121,7 @@ fun ActivationScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val isTv = remember(context) { isTvDevice(context) }
     val snackbarHostState = remember { SnackbarHostState() }
     val primaryFocusRequester = remember { FocusRequester() }
 
@@ -114,13 +132,10 @@ fun ActivationScreen(
         }
     }
 
-    // Auto-foca no botão principal para navegação imediata com D-pad do controle remoto
     LaunchedEffect(Unit) {
         try {
             primaryFocusRequester.requestFocus()
-        } catch (_: Exception) {
-            // Caso a visualização ainda esteja se compondo
-        }
+        } catch (_: Exception) {}
     }
 
     Box(
@@ -129,279 +144,96 @@ fun ActivationScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF070B13),
+                        Color(0xFF040810),
                         TvBackground,
-                        Color(0xFF060910)
+                        Color(0xFF03060C)
                     )
                 )
             )
     ) {
-        // Luz ambiente decorativa azul nos cantos para efeito cinema TV
+        // Brilho azul decorativo ambiente nos cantos
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(380.dp)
+                .size(420.dp)
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0x1A0084FF), Color.Transparent)
+                        colors = listOf(Color(0x1F0084FF), Color.Transparent)
                     )
                 )
         )
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            contentPadding = PaddingValues(top = 20.dp, bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            // Cabeçalho da TV: Logotipo e Identidade LC Player
-            item {
-                HeaderTvBar()
-            }
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val isWideLayout = this.maxWidth >= 680.dp
 
-            // Cartão de Ativação Principal
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = 840.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(TvCardBackground)
-                        .border(
-                            width = 1.dp,
-                            color = TvSurfaceVariant,
-                            shape = RoundedCornerShape(20.dp)
-                        )
-                        .padding(horizontal = 24.dp, vertical = 28.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        // Título da Seção
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = stringResource(R.string.activation_title),
-                                color = TvTextPrimary,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Identificação exclusiva desta instalação para o LC Admin",
-                                color = TvTextSecondary,
-                                fontSize = 14.sp
-                            )
-                        }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = AppSpacing.lg, vertical = AppSpacing.xl),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.xl)
+            ) {
+                // Cabeçalho com o Logotipo de marca estilizado
+                item {
+                    HeaderBrandBar(isWideLayout = isWideLayout)
+                }
 
-                        // Grid dos dois blocos principais: DEVICE ID e KEY
+                // Layout em 2 Áreas
+                item {
+                    if (isWideLayout) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 1060.dp),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.xl),
+                            verticalAlignment = Alignment.Top
                         ) {
-                            // Bloco DEVICE ID
-                            CredentialBox(
-                                label = stringResource(R.string.device_id_label),
-                                value = uiState.deviceId,
-                                description = "Identificador desta instalação",
-                                isKey = false,
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .testTag("device_id_box")
-                            )
-
-                            // Bloco KEY
-                            CredentialBox(
-                                label = stringResource(R.string.device_key_label),
-                                value = uiState.key,
-                                description = "Chave numérica de 6 dígitos",
-                                isKey = true,
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .testTag("device_key_box")
-                            )
-                        }
-
-                        // Seção de Status Atual
-                        StatusIndicatorCard(
-                            status = uiState.status,
-                            modifier = Modifier.testTag("status_indicator_card")
-                        )
-
-                        // Mensagem de instrução obrigatória solicitada
-                        InstructionNoticeCard()
-
-                        // Feedback visual da última tentativa de verificação
-                        AnimatedVisibility(
-                            visible = uiState.lastFeedbackMessage != null && !uiState.isChecking,
-                            enter = fadeIn(),
-                            exit = fadeOut()
-                        ) {
-                            uiState.lastFeedbackMessage?.let { msg ->
-                                val isSuccess = uiState.status == ActivationStatus.ACTIVE
-                                val isWaiting = uiState.status == ActivationStatus.WAITING_ACTIVATION
-                                val isBlockedOrExpired = uiState.status == ActivationStatus.BLOCKED || uiState.status == ActivationStatus.EXPIRED
-
-                                val badgeBg = when {
-                                    isSuccess -> StatusActiveBg
-                                    isWaiting -> StatusWaitingBg
-                                    isBlockedOrExpired -> StatusBlockedBg
-                                    else -> StatusErrorBg
-                                }
-                                val badgeBorder = when {
-                                    isSuccess -> StatusActiveBorder
-                                    isWaiting -> StatusWaitingBorder
-                                    isBlockedOrExpired -> StatusBlockedBorder
-                                    else -> StatusErrorBorder
-                                }
-                                val badgeText = when {
-                                    isSuccess -> StatusActiveText
-                                    isWaiting -> StatusWaitingText
-                                    isBlockedOrExpired -> StatusBlockedText
-                                    else -> StatusErrorText
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(badgeBg)
-                                        .border(1.dp, badgeBorder, RoundedCornerShape(10.dp))
-                                        .padding(vertical = 10.dp, horizontal = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Info,
-                                        contentDescription = null,
-                                        tint = badgeText,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = msg,
-                                        color = badgeText,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-
-                        // Indicador animado durante a requisição de verificação
-                        AnimatedVisibility(
-                            visible = uiState.isChecking,
-                            enter = fadeIn(),
-                            exit = fadeOut()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0x220084FF))
-                                    .border(1.dp, TvFocusBorder, RoundedCornerShape(10.dp))
-                                    .padding(vertical = 10.dp, horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
+                            // Área Principal (Dominante ~68%)
+                            Column(
+                                modifier = Modifier.weight(1.35f),
+                                verticalArrangement = Arrangement.spacedBy(AppSpacing.lg)
                             ) {
-                                CircularProgressIndicator(
-                                    color = TvSecondaryBlue,
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "Consultando status no LC Admin...",
-                                    color = TvSecondaryBlue,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                ActivationMainCard(
+                                    uiState = uiState,
+                                    isTv = isTv,
+                                    primaryFocusRequester = primaryFocusRequester,
+                                    viewModel = viewModel,
+                                    context = context
                                 )
                             }
-                        }
 
-                        // Botão de acesso direto às Minhas Listas quando o dispositivo estiver ativo
-                        AnimatedVisibility(
-                            visible = uiState.status == ActivationStatus.ACTIVE,
-                            enter = fadeIn(),
-                            exit = fadeOut()
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(52.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(TvPrimaryBlue, TvSecondaryBlue)
-                                        )
-                                    )
-                                    .tvFocusable(
-                                        shape = RoundedCornerShape(12.dp),
-                                        focusBorderColor = Color.White,
-                                        focusedScale = 1.04f,
-                                        onClick = { viewModel.navigateToSection(AppScreenSection.MY_LISTS) }
-                                    )
-                                    .testTag("btn_go_to_my_lists"),
-                                contentAlignment = Alignment.Center
+                            // Sidebar Azul Escuro (~32%)
+                            Column(
+                                modifier = Modifier.weight(0.65f),
+                                verticalArrangement = Arrangement.spacedBy(AppSpacing.lg)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Tv,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    Text(
-                                        text = "Acessar Minhas Listas",
-                                        color = Color.White,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                                SidebarGuideAndQrCard()
                             }
                         }
-
-                        // Ações D-Pad e Controle Remoto
-                        ActionButtonsRow(
-                            primaryFocusRequester = primaryFocusRequester,
-                            isChecking = uiState.isChecking,
-                            onVerifyClick = { viewModel.onVerifyActivationClicked() },
-                            onCopyClick = {
-                                val clipboard =
-                                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText(
-                                    "LC Player Credentials",
-                                    "Device ID: ${uiState.deviceId}\nKEY: ${uiState.key}"
-                                )
-                                clipboard.setPrimaryClip(clip)
-                                viewModel.onCopiedToClipboard()
-                            },
-                            onInfoClick = { viewModel.openSystemInfo() }
-                        )
-
-                        // Data da última checagem local
-                        uiState.lastCheckedTimestamp?.let { timestamp ->
-                            val formatter = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
-                            Text(
-                                text = "Última verificação: ${formatter.format(Date(timestamp))}",
-                                color = TvTextMuted,
-                                fontSize = 12.sp
+                    } else {
+                        // Layout Retrato (Empilhado verticalmente)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 540.dp),
+                            verticalArrangement = Arrangement.spacedBy(AppSpacing.lg),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            ActivationMainCard(
+                                uiState = uiState,
+                                isTv = isTv,
+                                primaryFocusRequester = primaryFocusRequester,
+                                viewModel = viewModel,
+                                context = context
                             )
+
+                            SidebarGuideAndQrCard()
                         }
                     }
                 }
-            }
 
-            // Rodapé Informativo para o usuário do LC Admin
-            item {
-                FooterAdminNotice()
+                item {
+                    FooterAdminNotice()
+                }
             }
         }
 
@@ -409,11 +241,10 @@ fun ActivationScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp)
+                .padding(bottom = AppSpacing.xl)
         )
     }
 
-    // Modal de Informações do Sistema (Android TV / Box)
     if (uiState.showSystemInfoModal) {
         SystemInfoDialog(
             deviceId = uiState.deviceId,
@@ -423,77 +254,608 @@ fun ActivationScreen(
     }
 }
 
+/**
+ * Logotipo estilizado da marca LC Player exatamente como no Mockup.
+ */
 @Composable
-private fun HeaderTvBar() {
+private fun HeaderBrandBar(isWideLayout: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(max = 840.dp)
-            .padding(horizontal = 8.dp),
+            .widthIn(max = 1060.dp)
+            .padding(horizontal = AppSpacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+        // Logotipo LC (Azul Elétrico) + Player (Branco)
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Ícone estilizado do LC Player
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(TvPrimaryBlue, Color(0xFF0056B3))
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "LC Player Logo",
-                    tint = Color.White,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-
-            Column {
-                Text(
-                    text = "LC Player",
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.8.sp
-                )
-                Text(
-                    text = "Android TV • Google TV • TV Box",
-                    color = TvSecondaryBlue,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+            Text(
+                text = "LC",
+                color = TvPrimaryBlue,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp
+            )
+            Text(
+                text = "Player",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
         }
 
-        // Indicador de modo TV
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs),
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
+                .clip(AppCorners.pill)
                 .background(TvSurfaceVariant)
-                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .padding(horizontal = AppSpacing.md, vertical = 6.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Tv,
-                contentDescription = "Dispositivo TV",
+                contentDescription = "Dispositivo",
                 tint = TvSecondaryBlue,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
             Text(
-                text = "LC Admin Ready",
+                text = if (isWideLayout) "Android TV • LC Admin" else "LC Admin Ready",
                 color = TvTextSecondary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+/**
+ * Área Principal Dominante da Tela de Ativação.
+ */
+@Composable
+private fun ActivationMainCard(
+    uiState: ActivationUiState,
+    isTv: Boolean,
+    primaryFocusRequester: FocusRequester,
+    viewModel: ActivationViewModel,
+    context: Context
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppCorners.xl)
+            .background(TvCardBackground)
+            .border(1.dp, TvSurfaceVariant, AppCorners.xl)
+            .padding(horizontal = AppSpacing.xl, vertical = AppSpacing.xxl)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.lg),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Título e Subtítulo
+            Column {
+                Text(
+                    text = "Ative seu dispositivo",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Digite os dados fornecidos pelo seu provedor para acessar o conteúdo.",
+                    color = TvTextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+
+            // Cards de Credenciais (Device ID e KEY)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
+            ) {
+                CredentialBox(
+                    label = "Device ID (MAC)",
+                    value = uiState.deviceId,
+                    description = "Identificador exclusivo deste aparelho",
+                    isKey = false,
+                    showCopyButton = !isTv,
+                    onCopyClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Device ID", uiState.deviceId)
+                        clipboard.setPrimaryClip(clip)
+                        viewModel.onCopiedToClipboard()
+                    },
+                    modifier = Modifier.testTag("device_id_box")
+                )
+
+                CredentialBox(
+                    label = "KEY (Token)",
+                    value = uiState.key,
+                    description = "Chave de acesso de 6 dígitos",
+                    isKey = true,
+                    showCopyButton = !isTv,
+                    onCopyClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("KEY", uiState.key)
+                        clipboard.setPrimaryClip(clip)
+                        viewModel.onCopiedToClipboard()
+                    },
+                    modifier = Modifier.testTag("device_key_box")
+                )
+            }
+
+            // Endereço do Painel Web destacado
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(AppCorners.md)
+                    .background(Color(0x1A0084FF))
+                    .border(1.dp, TvFocusBorder.copy(alpha = 0.5f), AppCorners.md)
+                    .padding(horizontal = AppSpacing.lg, vertical = 10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = "Painel Web",
+                    tint = TvSecondaryBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = "Acesse para ativar:",
+                    color = TvTextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "lcstreaming.com.br",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+            }
+
+            // Status do Dispositivo
+            StatusIndicatorCard(
+                status = uiState.status,
+                modifier = Modifier.testTag("status_indicator_card")
+            )
+
+            // Feedback da última verificação
+            AnimatedVisibility(
+                visible = uiState.lastFeedbackMessage != null && !uiState.isChecking,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                uiState.lastFeedbackMessage?.let { msg ->
+                    val isSuccess = uiState.status == ActivationStatus.ACTIVE
+                    val isWaiting = uiState.status == ActivationStatus.WAITING_ACTIVATION
+                    val isBlockedOrExpired = uiState.status == ActivationStatus.BLOCKED || uiState.status == ActivationStatus.EXPIRED
+
+                    val badgeBg = when {
+                        isSuccess -> StatusActiveBg
+                        isWaiting -> StatusWaitingBg
+                        isBlockedOrExpired -> StatusBlockedBg
+                        else -> StatusErrorBg
+                    }
+                    val badgeBorder = when {
+                        isSuccess -> StatusActiveBorder
+                        isWaiting -> StatusWaitingBorder
+                        isBlockedOrExpired -> StatusBlockedBorder
+                        else -> StatusErrorBorder
+                    }
+                    val badgeText = when {
+                        isSuccess -> StatusActiveText
+                        isWaiting -> StatusWaitingText
+                        isBlockedOrExpired -> StatusBlockedText
+                        else -> StatusErrorText
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(AppCorners.md)
+                            .background(badgeBg)
+                            .border(1.dp, badgeBorder, AppCorners.md)
+                            .padding(vertical = AppSpacing.md, horizontal = AppSpacing.lg),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Info,
+                            contentDescription = null,
+                            tint = badgeText,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(AppSpacing.sm))
+                        Text(
+                            text = msg,
+                            color = badgeText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Progress Indicator durante verificação
+            AnimatedVisibility(
+                visible = uiState.isChecking,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(AppCorners.md)
+                        .background(Color(0x220084FF))
+                        .border(1.dp, TvFocusBorder, AppCorners.md)
+                        .padding(vertical = AppSpacing.md, horizontal = AppSpacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = TvSecondaryBlue,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(AppSpacing.md))
+                    Text(
+                        text = "Consultando status no LC Admin...",
+                        color = TvSecondaryBlue,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            // Botão Principal "ATIVAR DISPOSITIVO" / "VERIFICAR ATIVAÇÃO" estilizado como no Mockup
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .clip(AppCorners.md)
+                    .background(if (!uiState.isChecking) TvPrimaryBlue else Color(0xFF1E2D42))
+                    .tvFocusable(
+                        enabled = !uiState.isChecking,
+                        shape = AppCorners.md,
+                        focusBorderColor = Color.White,
+                        focusedScale = 1.04f,
+                        onClick = { viewModel.onVerifyActivationClicked() }
+                    )
+                    .focusRequester(primaryFocusRequester)
+                    .testTag("btn_verify_activation"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm)
+                ) {
+                    if (uiState.isChecking) {
+                        CircularProgressIndicator(
+                            color = TvSecondaryBlue,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Text(
+                        text = if (uiState.isChecking) "VERIFICANDO..." else "VERIFICAR ATIVAÇÃO",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+            }
+
+            // Botão "Acessar Minhas Listas" quando ativo
+            AnimatedVisibility(
+                visible = uiState.status == ActivationStatus.ACTIVE,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(AppCorners.md)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(TvPrimaryBlue, TvSecondaryBlue)
+                            )
+                        )
+                        .tvFocusable(
+                            shape = AppCorners.md,
+                            focusBorderColor = Color.White,
+                            focusedScale = 1.04f,
+                            onClick = { viewModel.navigateToSection(AppScreenSection.MY_LISTS) }
+                        )
+                        .testTag("btn_go_to_my_lists"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tv,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Acessar Minhas Listas",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Ações secundárias
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!isTv) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .clip(AppCorners.md)
+                            .background(TvSurfaceVariant)
+                            .tvFocusable(
+                                shape = AppCorners.md,
+                                focusBorderColor = TvFocusBorder,
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText(
+                                        "LC Player Credentials",
+                                        "Device ID: ${uiState.deviceId}\nKEY: ${uiState.key}"
+                                    )
+                                    clipboard.setPrimaryClip(clip)
+                                    viewModel.onCopiedToClipboard()
+                                }
+                            )
+                            .testTag("btn_copy_credentials"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Copiar Código",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                        .clip(AppCorners.md)
+                        .background(TvSurfaceVariant)
+                        .tvFocusable(
+                            shape = AppCorners.md,
+                            focusBorderColor = TvFocusBorder,
+                            onClick = { viewModel.openSystemInfo() }
+                        )
+                        .testTag("btn_device_info"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Info do Sistema",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            uiState.lastCheckedTimestamp?.let { timestamp ->
+                val formatter = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
+                Text(
+                    text = "Última verificação: ${formatter.format(Date(timestamp))}",
+                    color = TvTextMuted,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Sidebar com tom azul-marinho profundo e organização em passos.
+ */
+@Composable
+private fun SidebarGuideAndQrCard(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(AppCorners.xl)
+            .background(TvSidebarBackground)
+            .border(1.dp, TvSurfaceVariant, AppCorners.xl)
+            .padding(AppSpacing.xl)
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.lg)
+        ) {
+            // Título
+            Text(
+                text = "COMO ATIVAR",
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+            )
+
+            // Passos organizados
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.md)) {
+                StepRow(
+                    stepNumber = "1",
+                    title = "Acesse lcstreaming.com.br",
+                    description = "Abra o painel web no celular ou computador."
+                )
+                StepRow(
+                    stepNumber = "2",
+                    title = "Informe o Device ID e a KEY",
+                    description = "Digite as credenciais exibidas ao lado."
+                )
+                StepRow(
+                    stepNumber = "3",
+                    title = "Aguarde a liberação",
+                    description = "Clique em 'Verificar Ativação' para iniciar."
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Título Pareamento Rápido
+            Text(
+                text = "PAREAMENTO RÁPIDO",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+            )
+
+            // Espaço Reservado para o Futuro QR Code
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(AppCorners.lg)
+                    .background(Color(0xFF060B14))
+                    .border(1.dp, Color(0xFF1A2B47), AppCorners.lg)
+                    .padding(AppSpacing.lg),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CropFree,
+                        contentDescription = "Espaço QR Code",
+                        tint = TvSecondaryBlue,
+                        modifier = Modifier.size(44.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(AppSpacing.sm))
+
+                    Text(
+                        text = "Pareamento por QR Code",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .clip(AppCorners.xs)
+                            .background(Color(0x220084FF))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "Em breve • Token seguro",
+                            color = TvSecondaryBlue,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(AppSpacing.xs))
+
+                    Text(
+                        text = "Escaneie com o celular para cadastrar este dispositivo.",
+                        color = TvTextMuted,
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StepRow(
+    stepNumber: String,
+    title: String,
+    description: String
+) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(TvPrimaryBlue),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = stepNumber,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Column {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = description,
+                color = TvTextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 15.sp
             )
         }
     }
@@ -505,48 +867,71 @@ private fun CredentialBox(
     value: String,
     description: String,
     isKey: Boolean,
+    showCopyButton: Boolean,
+    onCopyClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .fillMaxWidth()
+            .clip(AppCorners.lg)
             .background(TvSurface)
             .border(
                 width = 1.5.dp,
                 color = if (isKey) TvPrimaryBlue.copy(alpha = 0.5f) else TvSurfaceVariant,
-                shape = RoundedCornerShape(16.dp)
+                shape = AppCorners.lg
             )
-            .padding(18.dp)
+            .padding(AppSpacing.lg)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.xs)
         ) {
-            Text(
-                text = label.uppercase(Locale.getDefault()),
-                color = if (isKey) TvSecondaryBlue else TvTextSecondary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label.uppercase(Locale.getDefault()),
+                    color = if (isKey) TvSecondaryBlue else TvTextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
 
-            // Texto grande e de altíssima legibilidade para visualização à distância na TV (10-foot UI)
+                if (showCopyButton) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color(0x220084FF))
+                            .clickable { onCopyClick() }
+                            .padding(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copiar $label",
+                            tint = TvSecondaryBlue,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+
             Text(
                 text = value,
                 color = if (isKey) Color.White else TvTextPrimary,
                 fontSize = if (isKey) 26.sp else 22.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                letterSpacing = 1.5.sp,
-                textAlign = TextAlign.Center
+                letterSpacing = 1.5.sp
             )
 
             Text(
                 text = description,
                 color = TvTextMuted,
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center
+                fontSize = 11.sp
             )
         }
     }
@@ -568,10 +953,10 @@ private fun StatusIndicatorCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(AppCorners.md)
             .background(bgColor)
-            .border(width = 1.5.dp, color = borderColor, shape = RoundedCornerShape(14.dp))
-            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .border(width = 1.5.dp, color = borderColor, shape = AppCorners.md)
+            .padding(horizontal = AppSpacing.lg, vertical = AppSpacing.md)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -580,12 +965,11 @@ private fun StatusIndicatorCard(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)
             ) {
-                // Indicador circular de status
                 Box(
                     modifier = Modifier
-                        .size(12.dp)
+                        .size(10.dp)
                         .clip(CircleShape)
                         .background(textColor)
                 )
@@ -593,14 +977,14 @@ private fun StatusIndicatorCard(
                 Text(
                     text = "Status: ",
                     color = TvTextSecondary,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
 
                 Text(
                     text = status.title,
                     color = textColor,
-                    fontSize = 17.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -613,159 +997,7 @@ private fun StatusIndicatorCard(
                 },
                 contentDescription = status.title,
                 tint = textColor,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun InstructionNoticeCard() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF0F1522))
-            .border(1.dp, Color(0xFF1C273B), RoundedCornerShape(12.dp))
-            .padding(16.dp)
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Frase mandatória solicitada
-            Text(
-                text = stringResource(R.string.activation_notice),
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.activation_instructions),
-                color = TvTextSecondary,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 18.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun ActionButtonsRow(
-    primaryFocusRequester: FocusRequester,
-    isChecking: Boolean,
-    onVerifyClick: () -> Unit,
-    onCopyClick: () -> Unit,
-    onInfoClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Botão Principal: Verificar Ativação (com foco inicial na TV)
-        TvActionButton(
-            text = if (isChecking) "Verificando..." else stringResource(R.string.btn_refresh_status),
-            icon = Icons.Default.Refresh,
-            isPrimary = true,
-            isLoading = isChecking,
-            enabled = !isChecking,
-            onClick = onVerifyClick,
-            modifier = Modifier
-                .weight(1.3f)
-                .focusRequester(primaryFocusRequester)
-                .testTag("btn_verify_activation")
-        )
-
-        // Botão Secundário: Copiar Códigos
-        TvActionButton(
-            text = stringResource(R.string.btn_copy_credentials),
-            icon = Icons.Default.ContentCopy,
-            isPrimary = false,
-            enabled = !isChecking,
-            onClick = onCopyClick,
-            modifier = Modifier
-                .weight(1f)
-                .testTag("btn_copy_credentials")
-        )
-
-        // Botão Informações do Sistema
-        TvActionButton(
-            text = stringResource(R.string.btn_device_info),
-            icon = Icons.Default.Info,
-            isPrimary = false,
-            enabled = !isChecking,
-            onClick = onInfoClick,
-            modifier = Modifier
-                .weight(1.1f)
-                .testTag("btn_device_info")
-        )
-    }
-}
-
-@Composable
-private fun TvActionButton(
-    text: String,
-    icon: ImageVector,
-    isPrimary: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    isLoading: Boolean = false,
-    enabled: Boolean = true
-) {
-    val baseBgColor = when {
-        !enabled -> Color(0xFF1B2433)
-        isPrimary -> TvPrimaryBlue
-        else -> TvSurfaceVariant
-    }
-    val contentColor = when {
-        !enabled -> TvTextMuted
-        isPrimary -> Color.White
-        else -> TvTextPrimary
-    }
-
-    Box(
-        modifier = modifier
-            .height(52.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(baseBgColor)
-            .tvFocusable(
-                enabled = enabled,
-                shape = RoundedCornerShape(12.dp),
-                focusBorderColor = TvFocusBorder,
-                focusedScale = if (enabled) 1.05f else 1.0f,
-                onClick = if (enabled) onClick else null
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 14.dp)
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    color = TvSecondaryBlue,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(18.dp)
-                )
-            } else {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = text,
-                    tint = contentColor,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Text(
-                text = text,
-                color = contentColor,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -793,7 +1025,7 @@ private fun SystemInfoDialog(
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)
             ) {
                 Icon(
                     imageVector = Icons.Default.Info,
@@ -808,7 +1040,7 @@ private fun SystemInfoDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.md)) {
                 SystemInfoRow(label = "Aplicativo", value = "LC Player 1.0 (TV Edition)")
                 SystemInfoRow(label = "Device ID", value = deviceId)
                 SystemInfoRow(label = "KEY", value = key)
@@ -822,9 +1054,9 @@ private fun SystemInfoDialog(
             TextButton(
                 onClick = onDismiss,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(AppCorners.sm)
                     .tvFocusable(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppCorners.sm,
                         onClick = onDismiss
                     )
             ) {

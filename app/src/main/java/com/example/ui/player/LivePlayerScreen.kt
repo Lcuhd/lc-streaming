@@ -16,12 +16,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -82,6 +86,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.domain.model.LivePlayerState
+import com.example.domain.model.LiveStreamChannel
 import com.example.domain.model.ShortEpgState
 import com.example.ui.components.tvFocusable
 import com.example.ui.theme.StatusActiveText
@@ -125,9 +130,11 @@ data class SubtitleTrackInfo(
 @Composable
 fun LivePlayerScreen(
     playerState: LivePlayerState,
+    categoryChannels: List<LiveStreamChannel> = emptyList(),
     onBackClick: () -> Unit,
     onPreviousChannel: () -> Unit = {},
     onNextChannel: () -> Unit = {},
+    onSelectChannel: (LiveStreamChannel) -> Unit = {},
     onSaveProgress: ((positionMs: Long, durationMs: Long, completed: Boolean) -> Unit)? = null,
     onPlayerStateChange: (isPlaying: Boolean, isBuffering: Boolean, error: String?) -> Unit,
     onRetryFallbackFormat: (extension: String) -> Unit,
@@ -148,6 +155,7 @@ fun LivePlayerScreen(
     var subtitleTracks by remember { mutableStateOf<List<SubtitleTrackInfo>>(emptyList()) }
     var showAudioModal by remember { mutableStateOf(false) }
     var showSubtitlesModal by remember { mutableStateOf(false) }
+    var showChannelZappingBox by remember { mutableStateOf(false) }
 
     val streamTypeClean = playerState.channel.streamType?.lowercase()?.trim().orEmpty()
     val isVodContent = streamTypeClean == "movie" ||
@@ -156,12 +164,15 @@ fun LivePlayerScreen(
                        streamTypeClean == "vod" ||
                        playerState.seriesId != null ||
                        playerState.episodeId != null
+    val isLiveTv = !isVodContent
 
     val backButtonFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
 
     BackHandler {
-        if (showAudioModal || showSubtitlesModal) {
+        if (showChannelZappingBox) {
+            showChannelZappingBox = false
+        } else if (showAudioModal || showSubtitlesModal) {
             showAudioModal = false
             showSubtitlesModal = false
         } else {
@@ -198,10 +209,6 @@ fun LivePlayerScreen(
                         if (!hasExecutedInitialSeek && playerState.startPositionMs > 0) {
                             hasExecutedInitialSeek = true
                             exoPlayer.seekTo(playerState.startPositionMs)
-                            android.util.Log.i(
-                                "LCPlayer_SeriesProgress",
-                                "Seek inicial para posição salva executado: ${playerState.startPositionMs}ms"
-                            )
                         }
                     }
                     Player.STATE_ENDED -> {
@@ -225,10 +232,6 @@ fun LivePlayerScreen(
             override fun onTracksChanged(tracks: Tracks) {
                 audioTracks = extractAudioTracks(tracks)
                 subtitleTracks = extractSubtitleTracks(tracks)
-                android.util.Log.i(
-                    "LCPlayer_Tracks",
-                    "Tracks detectadas: ${audioTracks.size} faixas de áudio, ${subtitleTracks.size} legendas"
-                )
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -302,18 +305,22 @@ fun LivePlayerScreen(
     }
 
     // Auto-ocultação do OSD após 5 segundos de inatividade
-    LaunchedEffect(isControlsVisible, isPlaying, isBuffering, showAudioModal, showSubtitlesModal) {
-        if (isControlsVisible && isPlaying && !isBuffering && playbackError == null && !showAudioModal && !showSubtitlesModal) {
+    LaunchedEffect(isControlsVisible, isPlaying, isBuffering, showAudioModal, showSubtitlesModal, showChannelZappingBox) {
+        if (isControlsVisible && isPlaying && !isBuffering && playbackError == null && !showAudioModal && !showSubtitlesModal && !showChannelZappingBox) {
             delay(5000)
             isControlsVisible = false
         }
     }
 
     // Foco automático nos controles quando exibidos
-    LaunchedEffect(isControlsVisible) {
-        if (isControlsVisible && !showAudioModal && !showSubtitlesModal) {
+    LaunchedEffect(isControlsVisible, showChannelZappingBox) {
+        if (isControlsVisible && !showAudioModal && !showSubtitlesModal && !showChannelZappingBox) {
             try {
-                playPauseFocusRequester.requestFocus()
+                if (isVodContent) {
+                    playPauseFocusRequester.requestFocus()
+                } else {
+                    backButtonFocusRequester.requestFocus()
+                }
             } catch (_: Exception) {}
         }
     }
@@ -326,13 +333,16 @@ fun LivePlayerScreen(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
             ) {
+                if (isLiveTv) {
+                    showChannelZappingBox = !showChannelZappingBox
+                }
                 isControlsVisible = !isControlsVisible
             }
             .onKeyEvent { keyEvent ->
                 if (keyEvent.type != KeyEventType.KeyDown) {
                     return@onKeyEvent false
                 }
-                if (showAudioModal || showSubtitlesModal) {
+                if (showAudioModal || showSubtitlesModal || showChannelZappingBox) {
                     return@onKeyEvent false
                 }
 
@@ -358,8 +368,14 @@ fun LivePlayerScreen(
                         }
                     }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                        isControlsVisible = !isControlsVisible
-                        true
+                        if (isLiveTv) {
+                            showChannelZappingBox = true
+                            isControlsVisible = true
+                            true
+                        } else {
+                            isControlsVisible = !isControlsVisible
+                            true
+                        }
                     }
                     Key.MediaPlayPause -> {
                         if (exoPlayer.isPlaying) {
@@ -444,7 +460,7 @@ fun LivePlayerScreen(
                         modifier = Modifier
                             .size(64.dp)
                             .clip(CircleShape)
-                            .background(Color(0x22FF1744)),
+                            .background(Color(0x22FF3D71)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -550,7 +566,7 @@ fun LivePlayerScreen(
 
         // Controles OSD
         AnimatedVisibility(
-            visible = isControlsVisible && playbackError == null,
+            visible = isControlsVisible && playbackError == null && !showChannelZappingBox,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
@@ -611,6 +627,16 @@ fun LivePlayerScreen(
                         .padding(start = 24.dp, end = 24.dp, bottom = 24.dp)
                 )
             }
+        }
+
+        // Box Flutuante de Zapping de Canais (TV Ao Vivo)
+        if (showChannelZappingBox && categoryChannels.isNotEmpty()) {
+            LiveChannelZappingPanel(
+                categoryChannels = categoryChannels,
+                currentStreamId = playerState.channel.streamId,
+                onSelectChannel = onSelectChannel,
+                onDismiss = { showChannelZappingBox = false }
+            )
         }
 
         // Modal de Seleção de Áudio
@@ -835,9 +861,14 @@ private fun PlayerTopBar(
     }
 }
 
+/**
+ * Controles OSD do Player.
+ * Para TV ao vivo, exibe uma interface limpa com Logo + Nome + EPG.
+ * Para VOD (Filmes e Séries), exibe controles de reprodução completos.
+ */
 @Composable
 private fun PlayerBottomControls(
-    channel: com.example.domain.model.LiveStreamChannel,
+    channel: LiveStreamChannel,
     epgState: ShortEpgState? = null,
     isPlaying: Boolean,
     currentPositionMs: Long = 0L,
@@ -868,101 +899,99 @@ private fun PlayerBottomControls(
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xDD101622))
             .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 20.dp, vertical = 14.dp)
     ) {
-        // TOPO — BARRA INTERATIVA DE PROGRESSO E TEMPO (VOD)
-        if (isVodContent && durationMs > 0) {
-            var isDragging by remember { mutableStateOf(false) }
-            var dragPositionMs by remember { mutableStateOf(0f) }
+        if (isVodContent) {
+            // BARRA INTERATIVA DE PROGRESSO E TEMPO (Apenas VOD)
+            if (durationMs > 0) {
+                var isDragging by remember { mutableStateOf(false) }
+                var dragPositionMs by remember { mutableStateOf(0f) }
 
-            val displayPosition = if (isDragging) dragPositionMs.toLong() else currentPositionMs
+                val displayPosition = if (isDragging) dragPositionMs.toLong() else currentPositionMs
 
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = formatMsToTime(displayPosition),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+
+                    Slider(
+                        value = displayPosition.toFloat().coerceIn(0f, durationMs.toFloat()),
+                        onValueChange = { newValue ->
+                            isDragging = true
+                            dragPositionMs = newValue
+                        },
+                        onValueChangeFinished = {
+                            isDragging = false
+                            onSeekToPosition(dragPositionMs.toLong())
+                        },
+                        valueRange = 0f..durationMs.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = TvSecondaryBlue,
+                            activeTrackColor = TvSecondaryBlue,
+                            inactiveTrackColor = Color(0xFF1E2D42)
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("vod_progress_slider")
+                    )
+
+                    Text(
+                        text = formatMsToTime(durationMs),
+                        color = TvTextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            // CONTROLES DE AÇÃO VOD (Filmes e Séries)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = formatMsToTime(displayPosition),
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-
-                Slider(
-                    value = displayPosition.toFloat().coerceIn(0f, durationMs.toFloat()),
-                    onValueChange = { newValue ->
-                        isDragging = true
-                        dragPositionMs = newValue
-                    },
-                    onValueChangeFinished = {
-                        isDragging = false
-                        onSeekToPosition(dragPositionMs.toLong())
-                    },
-                    valueRange = 0f..durationMs.toFloat(),
-                    colors = SliderDefaults.colors(
-                        thumbColor = TvSecondaryBlue,
-                        activeTrackColor = TvSecondaryBlue,
-                        inactiveTrackColor = Color(0xFF1E2D42)
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("vod_progress_slider")
-                )
-
-                Text(
-                    text = formatMsToTime(durationMs),
-                    color = TvTextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-
-        // CENTRO — CONTROLES DE AÇÃO
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Botão Anterior (Exibido para Live TV e Séries)
-                if (isLiveTv || channel.streamType == "series") {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(TvSurface)
-                            .border(1.dp, TvSurfaceVariant, CircleShape)
-                            .tvFocusable(
-                                shape = CircleShape,
-                                focusBorderColor = TvFocusBorder,
-                                focusedScale = 1.1f,
-                                onClick = onPreviousChannel
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (channel.streamType == "series") {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(TvSurface)
+                                .border(1.dp, TvSurfaceVariant, CircleShape)
+                                .tvFocusable(
+                                    shape = CircleShape,
+                                    focusBorderColor = TvFocusBorder,
+                                    focusedScale = 1.1f,
+                                    onClick = onPreviousChannel
+                                )
+                                .testTag("btn_player_prev_channel"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Anterior",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
-                            .testTag("btn_player_prev_channel"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "Anterior",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        }
                     }
-                }
 
-                // Botão -10s (Apenas para VOD)
-                if (isVodContent) {
                     Box(
                         modifier = Modifier
                             .height(38.dp)
@@ -986,34 +1015,30 @@ private fun PlayerBottomControls(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                }
 
-                // Botão Play/Pause (Centralizado e em destaque)
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(TvSecondaryBlue)
-                        .tvFocusable(
-                            shape = CircleShape,
-                            focusBorderColor = Color.White,
-                            focusedScale = 1.1f,
-                            onClick = onPlayPauseToggle
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(TvSecondaryBlue)
+                            .tvFocusable(
+                                shape = CircleShape,
+                                focusBorderColor = Color.White,
+                                focusedScale = 1.1f,
+                                onClick = onPlayPauseToggle
+                            )
+                            .focusRequester(playPauseFocusRequester)
+                            .testTag("btn_player_play_pause"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
                         )
-                        .focusRequester(playPauseFocusRequester)
-                        .testTag("btn_player_play_pause"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                    }
 
-                // Botão +10s (Apenas para VOD)
-                if (isVodContent) {
                     Box(
                         modifier = Modifier
                             .height(38.dp)
@@ -1037,10 +1062,106 @@ private fun PlayerBottomControls(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                }
 
-                // Botão Próximo (Exibido para Live TV e Séries)
-                if (isLiveTv || channel.streamType == "series") {
+                    if (channel.streamType == "series") {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(TvSurface)
+                                .border(1.dp, TvSurfaceVariant, CircleShape)
+                                .tvFocusable(
+                                    shape = CircleShape,
+                                    focusBorderColor = TvFocusBorder,
+                                    focusedScale = 1.1f,
+                                    onClick = onNextChannel
+                                )
+                                .testTag("btn_player_next_channel"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Próximo",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    if (audioTracksCount > 1) {
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(TvSurface)
+                                .border(1.dp, TvFocusBorder, RoundedCornerShape(10.dp))
+                                .tvFocusable(
+                                    shape = RoundedCornerShape(10.dp),
+                                    focusBorderColor = Color.White,
+                                    focusedScale = 1.08f,
+                                    onClick = onOpenAudioModal
+                                )
+                                .padding(horizontal = 10.dp)
+                                .testTag("btn_player_audio_tracks"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Audiotrack,
+                                    contentDescription = "Faixas de Áudio",
+                                    tint = TvSecondaryBlue,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Áudio",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (subtitleTracksCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(TvSurface)
+                                .border(1.dp, TvFocusBorder, RoundedCornerShape(10.dp))
+                                .tvFocusable(
+                                    shape = RoundedCornerShape(10.dp),
+                                    focusBorderColor = Color.White,
+                                    focusedScale = 1.08f,
+                                    onClick = onOpenSubtitlesModal
+                                )
+                                .padding(horizontal = 10.dp)
+                                .testTag("btn_player_subtitle_tracks"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Subtitles,
+                                    contentDescription = "Legendas",
+                                    tint = TvSecondaryBlue,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Legendas",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -1051,236 +1172,428 @@ private fun PlayerBottomControls(
                                 shape = CircleShape,
                                 focusBorderColor = TvFocusBorder,
                                 focusedScale = 1.1f,
-                                onClick = onNextChannel
+                                onClick = onRefresh
                             )
-                            .testTag("btn_player_next_channel"),
+                            .testTag("btn_player_reload"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Próximo",
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Recarregar stream",
                             tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-                }
-
-                // Botão Áudio (Apenas para VOD com mais de 1 faixa de áudio)
-                if (isVodContent && audioTracksCount > 1) {
-                    Box(
-                        modifier = Modifier
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(TvSurface)
-                            .border(1.dp, TvFocusBorder, RoundedCornerShape(10.dp))
-                            .tvFocusable(
-                                shape = RoundedCornerShape(10.dp),
-                                focusBorderColor = Color.White,
-                                focusedScale = 1.08f,
-                                onClick = onOpenAudioModal
-                            )
-                            .padding(horizontal = 10.dp)
-                            .testTag("btn_player_audio_tracks"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Audiotrack,
-                                contentDescription = "Faixas de Áudio",
-                                tint = TvSecondaryBlue,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Áudio",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                // Botão Legendas (Apenas para VOD com faixas de legenda)
-                if (isVodContent && subtitleTracksCount > 0) {
-                    Box(
-                        modifier = Modifier
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(TvSurface)
-                            .border(1.dp, TvFocusBorder, RoundedCornerShape(10.dp))
-                            .tvFocusable(
-                                shape = RoundedCornerShape(10.dp),
-                                focusBorderColor = Color.White,
-                                focusedScale = 1.08f,
-                                onClick = onOpenSubtitlesModal
-                            )
-                            .padding(horizontal = 10.dp)
-                            .testTag("btn_player_subtitle_tracks"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Subtitles,
-                                contentDescription = "Legendas",
-                                tint = TvSecondaryBlue,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Legendas",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                // Botão Recarregar Stream (Compartilhado)
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(TvSurface)
-                        .border(1.dp, TvSurfaceVariant, CircleShape)
-                        .tvFocusable(
-                            shape = CircleShape,
-                            focusBorderColor = TvFocusBorder,
-                            focusedScale = 1.1f,
-                            onClick = onRefresh
-                        )
-                        .testTag("btn_player_reload"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Recarregar stream",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // RODAPÉ — INFORMAÇÕES DO CONTEÚDO (Título e Sinopse)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF142033)),
-                contentAlignment = Alignment.Center
+        // RODAPÉ DA TV AO VIVO OU INFORMAÇÕES VOD
+        if (isLiveTv) {
+            // INTERFACE LIMPA DE TV AO VIVO (Logo + Nome + EPG Amplo - Sem botões poluindo)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (!channel.streamIcon.isNullOrBlank()) {
-                    AsyncImage(
-                        model = channel.streamIcon,
-                        contentDescription = "Logo de ${channel.name}",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(2.dp),
-                        contentScale = ContentScale.Fit
-                    )
-                } else {
-                    Icon(
-                        imageVector = when (channel.streamType) {
-                            "movie" -> Icons.Default.Movie
-                            "series" -> Icons.Default.Tv
-                            else -> Icons.Default.LiveTv
-                        },
-                        contentDescription = null,
-                        tint = TvTextSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                // Título sempre visível em no máximo 1 linha com Ellipsis (...)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF142033)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (channel.num != null) {
-                        Text(
-                            text = "#${channel.num}",
-                            color = TvSecondaryBlue,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                    if (!channel.streamIcon.isNullOrBlank()) {
+                        AsyncImage(
+                            model = channel.streamIcon,
+                            contentDescription = "Logo de ${channel.name}",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(4.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.LiveTv,
+                            contentDescription = null,
+                            tint = TvSecondaryBlue,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
-                    Text(
-                        text = channel.name,
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
                 }
 
-                // Subtítulo / Sinopse inicialmente resumido em 1 linha com expansão/recolhimento
-                var isSynopsisExpanded by remember { mutableStateOf(false) }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (channel.num != null) {
+                            Text(
+                                text = "#${channel.num}",
+                                color = TvSecondaryBlue,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Text(
+                            text = channel.name,
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    val subtitleText = when {
-                        channel.streamType == "movie" ->
-                            "FILME VOD ${if (durationMs > 0) "• " + formatMsToTime(durationMs) else ""}"
-                        channel.streamType == "series" ->
-                            "EPISÓDIO DE SÉRIE ${if (durationMs > 0) "• " + formatMsToTime(durationMs) else ""}"
-                        epgState?.isLoading == true ->
-                            "Carregando programação..."
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    when {
+                        epgState?.isLoading == true -> {
+                            Text(
+                                text = "Carregando guia EPG...",
+                                color = TvTextMuted,
+                                fontSize = 13.sp
+                            )
+                        }
                         epgState?.hasEpg == true -> {
                             val current = epgState.currentProgram
                             val next = epgState.nextProgram
-                            val curT = current?.title.orEmpty()
-                            val nextT = next?.let { " • Próximo: ${it.title}" }.orEmpty()
-                            "$curT$nextT"
+                            val currentTitle = current?.title.orEmpty()
+                            val currentTimes = current?.timeRangeFormatted?.let { " ($it)" }.orEmpty()
+                            val nextInfo = next?.let { " • Próximo: ${it.title}${if (!it.startTimeFormatted.isNullOrBlank()) " (${it.startTimeFormatted})" else ""}" }.orEmpty()
+
+                            Text(
+                                text = "$currentTitle$currentTimes$nextInfo",
+                                color = StatusActiveText,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                        else -> "Programação indisponível"
+                        else -> {
+                            Text(
+                                text = "Programação indisponível",
+                                color = TvTextMuted,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // INFORMAÇÕES DO CONTEÚDO VOD
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF142033)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!channel.streamIcon.isNullOrBlank()) {
+                        AsyncImage(
+                            model = channel.streamIcon,
+                            contentDescription = "Logo de ${channel.name}",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(2.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Icon(
+                            imageVector = when (channel.streamType) {
+                                "movie" -> Icons.Default.Movie
+                                "series" -> Icons.Default.Tv
+                                else -> Icons.Default.LiveTv
+                            },
+                            contentDescription = null,
+                            tint = TvTextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (channel.num != null) {
+                            Text(
+                                text = "#${channel.num}",
+                                color = TvSecondaryBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Text(
+                            text = channel.name,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+
+                    var isSynopsisExpanded by remember { mutableStateOf(false) }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val subtitleText = when {
+                            channel.streamType == "movie" ->
+                                "FILME VOD ${if (durationMs > 0) "• " + formatMsToTime(durationMs) else ""}"
+                            channel.streamType == "series" ->
+                                "EPISÓDIO DE SÉRIE ${if (durationMs > 0) "• " + formatMsToTime(durationMs) else ""}"
+                            else -> "Mídia VOD"
+                        }
+
+                        Text(
+                            text = subtitleText,
+                            color = TvTextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            maxLines = if (isSynopsisExpanded) 4 else 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+
+                        if (channel.streamType == "series") {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0x22FFFFFF))
+                                    .clickable { isSynopsisExpanded = !isSynopsisExpanded }
+                                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = if (isSynopsisExpanded) "Menos" else "...",
+                                    color = TvSecondaryBlue,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Box Flutuante / Modal de Zapping de Canais de TV Ao Vivo sobre o vídeo.
+ */
+@Composable
+private fun LiveChannelZappingPanel(
+    categoryChannels: List<LiveStreamChannel>,
+    currentStreamId: String,
+    onSelectChannel: (LiveStreamChannel) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    val initialIndex = remember(categoryChannels, currentStreamId) {
+        categoryChannels.indexOfFirst { it.streamId == currentStreamId }.coerceAtLeast(0)
+    }
+
+    LaunchedEffect(initialIndex) {
+        if (initialIndex > 0) {
+            try {
+                listState.scrollToItem((initialIndex - 1).coerceAtLeast(0))
+            } catch (_: Exception) {}
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x66000000))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onDismiss() },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = modifier
+                .padding(start = 24.dp, top = 24.dp, bottom = 24.dp)
+                .width(320.dp)
+                .fillMaxHeight(0.85f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xF00A101C))
+                .border(1.dp, TvFocusBorder.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { }
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Cabeçalho da Box
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x220084FF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LiveTv,
+                                contentDescription = null,
+                                tint = TvSecondaryBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Guia de Canais",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
 
                     Text(
-                        text = subtitleText,
+                        text = "${categoryChannels.size} canais",
                         color = TvTextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Normal,
-                        maxLines = if (isSynopsisExpanded) 4 else 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
                     )
+                }
 
-                    if (channel.streamType == "series" || epgState?.hasEpg == true) {
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Lista de Canais Rolável
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(categoryChannels, key = { it.streamId }) { channelItem ->
+                        val isCurrent = channelItem.streamId == currentStreamId
+                        val itemFocusRequester = remember { FocusRequester() }
+
+                        LaunchedEffect(isCurrent) {
+                            if (isCurrent) {
+                                try {
+                                    itemFocusRequester.requestFocus()
+                                } catch (_: Exception) {}
+                            }
+                        }
+
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0x22FFFFFF))
-                                .clickable { isSynopsisExpanded = !isSynopsisExpanded }
-                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isCurrent) Color(0xFF132A4A) else TvSurface)
+                                .border(
+                                    width = if (isCurrent) 1.5.dp else 1.dp,
+                                    color = if (isCurrent) TvSecondaryBlue else TvSurfaceVariant,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .tvFocusable(
+                                    shape = RoundedCornerShape(10.dp),
+                                    focusBorderColor = Color.White,
+                                    onClick = {
+                                        onSelectChannel(channelItem)
+                                        onDismiss()
+                                    }
+                                )
+                                .focusRequester(itemFocusRequester)
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            Text(
-                                text = if (isSynopsisExpanded) "Menos" else "...",
-                                color = TvSecondaryBlue,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF142033)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (!channelItem.streamIcon.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = channelItem.streamIcon,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(2.dp),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Tv,
+                                            contentDescription = null,
+                                            tint = TvTextSecondary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        if (channelItem.num != null) {
+                                            Text(
+                                                text = "#${channelItem.num}",
+                                                color = TvSecondaryBlue,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        Text(
+                                            text = channelItem.name,
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                if (isCurrent) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(StatusActiveText)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1295,85 +1608,84 @@ private fun AudioTrackSelectionModal(
     onSelectTrack: (AudioTrackInfo) -> Unit,
     onDismiss: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xAA000000))
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .width(360.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF101826))
-                .border(1.dp, TvFocusBorder, RoundedCornerShape(16.dp))
-                .padding(20.dp)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { }
-        ) {
-            Text(
-                text = "Idioma do Áudio",
-                color = Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-
-            audioTracks.forEach { track ->
-                val isSelected = track.isSelected
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (isSelected) Color(0xFF1A355B) else TvSurface)
-                        .border(
-                            1.dp,
-                            if (isSelected) TvSecondaryBlue else TvSurfaceVariant,
-                            RoundedCornerShape(10.dp)
-                        )
-                        .tvFocusable(
-                            shape = RoundedCornerShape(10.dp),
-                            focusBorderColor = Color.White,
-                            onClick = {
-                                onSelectTrack(track)
-                                onDismiss()
-                            }
-                        )
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = track.label,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
-                        if (isSelected) {
-                            Text(
-                                text = "✓ Ativo",
-                                color = StatusActiveText,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = TvSurface,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Audiotrack,
+                    contentDescription = null,
+                    tint = TvSecondaryBlue
+                )
+                Text(
+                    text = "Faixas de Áudio",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                audioTracks.forEach { track ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (track.isSelected) Color(0xFF132A4A) else TvSurface)
+                            .border(
+                                width = 1.dp,
+                                color = if (track.isSelected) TvSecondaryBlue else TvSurfaceVariant,
+                                shape = RoundedCornerShape(8.dp)
                             )
+                            .tvFocusable(
+                                shape = RoundedCornerShape(8.dp),
+                                onClick = {
+                                    onSelectTrack(track)
+                                    onDismiss()
+                                }
+                            )
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = track.label,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                            if (track.isSelected) {
+                                Text(
+                                    text = "● Selecionado",
+                                    color = TvSecondaryBlue,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Fechar",
+                    color = TvSecondaryBlue,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
-    }
+    )
 }
 
 @Composable
@@ -1383,131 +1695,107 @@ private fun SubtitleTrackSelectionModal(
     onDisableSubtitles: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val isAnySelected = subtitleTracks.any { it.isSelected }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xAA000000))
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .width(360.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF101826))
-                .border(1.dp, TvFocusBorder, RoundedCornerShape(16.dp))
-                .padding(20.dp)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { }
-        ) {
-            Text(
-                text = "Legendas",
-                color = Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (!isAnySelected) Color(0xFF1A355B) else TvSurface)
-                    .border(
-                        1.dp,
-                        if (!isAnySelected) TvSecondaryBlue else TvSurfaceVariant,
-                        RoundedCornerShape(10.dp)
-                    )
-                    .tvFocusable(
-                        shape = RoundedCornerShape(10.dp),
-                        focusBorderColor = Color.White,
-                        onClick = {
-                            onDisableSubtitles()
-                            onDismiss()
-                        }
-                    )
-                    .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.CenterStart
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = TvSurface,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Desativadas",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = if (!isAnySelected) FontWeight.Bold else FontWeight.Medium
-                    )
-                    if (!isAnySelected) {
-                        Text(
-                            text = "✓ Ativo",
-                            color = StatusActiveText,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Default.Subtitles,
+                    contentDescription = null,
+                    tint = TvSecondaryBlue
+                )
+                Text(
+                    text = "Legendas",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            subtitleTracks.forEach { track ->
-                val isSelected = track.isSelected
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (isSelected) Color(0xFF1A355B) else TvSurface)
-                        .border(
-                            1.dp,
-                            if (isSelected) TvSecondaryBlue else TvSurfaceVariant,
-                            RoundedCornerShape(10.dp)
-                        )
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(TvSurface)
+                        .border(1.dp, TvSurfaceVariant, RoundedCornerShape(8.dp))
                         .tvFocusable(
-                            shape = RoundedCornerShape(10.dp),
-                            focusBorderColor = Color.White,
+                            shape = RoundedCornerShape(8.dp),
                             onClick = {
-                                onSelectTrack(track)
+                                onDisableSubtitles()
                                 onDismiss()
                             }
                         )
-                        .padding(horizontal = 14.dp),
+                        .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = track.label,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
-                        if (isSelected) {
-                            Text(
-                                text = "✓ Ativo",
-                                color = StatusActiveText,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                    Text(
+                        text = "Desativar Legendas",
+                        color = TvTextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                subtitleTracks.forEach { track ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (track.isSelected) Color(0xFF132A4A) else TvSurface)
+                            .border(
+                                width = 1.dp,
+                                color = if (track.isSelected) TvSecondaryBlue else TvSurfaceVariant,
+                                shape = RoundedCornerShape(8.dp)
                             )
+                            .tvFocusable(
+                                shape = RoundedCornerShape(8.dp),
+                                onClick = {
+                                    onSelectTrack(track)
+                                    onDismiss()
+                                }
+                            )
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = track.label,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                            if (track.isSelected) {
+                                Text(
+                                    text = "● Selecionada",
+                                    color = TvSecondaryBlue,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Fechar",
+                    color = TvSecondaryBlue,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
-    }
+    )
 }

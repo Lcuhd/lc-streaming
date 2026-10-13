@@ -194,22 +194,39 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     )
 
                     val currentSec = _uiState.value.currentSection
-                    val shouldNavigate = (response.deviceStatus == ActivationStatus.ACTIVE) &&
+                    val isDeviceActive = (response.deviceStatus == ActivationStatus.ACTIVE) ||
+                            (_uiState.value.status == ActivationStatus.ACTIVE)
+
+                    val shouldNavigate = isDeviceActive &&
                             (navigateToSectionIfActive || currentSec == AppScreenSection.MY_LISTS || currentSec == AppScreenSection.ACTIVATION)
 
-                    if (shouldNavigate && activeLists.size == 1) {
-                        val singleActiveList = activeLists.first()
-                        Log.i(TAG, "Exatamente 1 lista ativa encontrada ('${singleActiveList.title}'). Selecionando e abrindo automaticamente o conteúdo.")
-                        _uiState.update { state ->
-                            state.copy(
-                                isLoadingLists = false,
-                                status = response.deviceStatus,
-                                lists = response.lists,
-                                listsFeedbackMessage = response.displayMessage,
-                                isAutoSelectedList = true
-                            )
+                    if (shouldNavigate && activeLists.isNotEmpty()) {
+                        if (activeLists.size == 1) {
+                            val singleActiveList = activeLists.first()
+                            Log.i(TAG, "Exatamente 1 lista ativa encontrada ('${singleActiveList.title}'). Selecionando e abrindo a Home diretamente.")
+                            _uiState.update { state ->
+                                state.copy(
+                                    isLoadingLists = false,
+                                    status = ActivationStatus.ACTIVE,
+                                    lists = response.lists,
+                                    listsFeedbackMessage = response.displayMessage,
+                                    isAutoSelectedList = true
+                                )
+                            }
+                            openContentCategories(singleActiveList)
+                        } else {
+                            Log.i(TAG, "Múltiplas listas ativas encontradas (${activeLists.size}). Abrindo seletor de listas.")
+                            _uiState.update { state ->
+                                state.copy(
+                                    isLoadingLists = false,
+                                    status = ActivationStatus.ACTIVE,
+                                    lists = response.lists,
+                                    listsFeedbackMessage = response.displayMessage,
+                                    isAutoSelectedList = false,
+                                    currentSection = AppScreenSection.MY_LISTS
+                                )
+                            }
                         }
-                        openContentCategories(singleActiveList)
                     } else {
                         _uiState.update { state ->
                             state.copy(
@@ -217,8 +234,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                                 status = response.deviceStatus,
                                 lists = response.lists,
                                 listsFeedbackMessage = response.displayMessage,
-                                isAutoSelectedList = false,
-                                currentSection = if (shouldNavigate) AppScreenSection.MY_LISTS else state.currentSection
+                                isAutoSelectedList = false
                             )
                         }
                     }
@@ -439,6 +455,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         val wasOnMyLists = _uiState.value.currentSection == AppScreenSection.MY_LISTS
 
         // Reseta o estado para garantir que dados de outras listas não apareçam
+        // CARREGAMENTO SOB DEMANDA: Inicializa sem disparar rajada paralela de rede
         _uiState.update {
             it.copy(
                 selectedListId = list.id,
@@ -448,18 +465,53 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     listId = list.id,
                     listTitle = list.title,
                     sourceName = list.sourceName,
-                    isLoadingLive = true,
-                    isLoadingVod = true,
-                    isLoadingSeries = true,
+                    isLoadingLive = false,
+                    isLoadingVod = false,
+                    isLoadingSeries = false,
+                    isLiveLoaded = false,
+                    isVodLoaded = false,
+                    isSeriesLoaded = false,
                     selectedTab = CategoryType.LIVE
                 )
             )
         }
+    }
 
-        // Dispara a consulta das três estruturas separadas
-        fetchCategoriesForList(list, CategoryType.LIVE)
-        fetchCategoriesForList(list, CategoryType.VOD)
-        fetchCategoriesForList(list, CategoryType.SERIES)
+    /**
+     * Garante o carregamento sob demanda para o tipo especificado (LIVE, VOD ou SERIES).
+     * Evita requisições duplicadas e utiliza os dados em cache quando já carregados sem erro.
+     */
+    fun ensureCategoriesLoaded(type: CategoryType) {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        val isLoaded = when (type) {
+            CategoryType.LIVE -> catState.isLiveLoaded
+            CategoryType.VOD -> catState.isVodLoaded
+            CategoryType.SERIES -> catState.isSeriesLoaded
+        }
+        val isLoading = catState.isLoadingForType(type)
+        val error = catState.getErrorForType(type)
+        val categories = catState.getCategoriesForType(type)
+
+        if (isLoading || (isLoaded && error == null && categories.isNotEmpty())) {
+            Log.d(TAG, "Categorias para ${type.displayName} já em cache. Nenhuma requisição realizada.")
+            return
+        }
+
+        Log.i(TAG, "Iniciando consulta sob demanda para ${type.displayName}...")
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            val updated = when (type) {
+                CategoryType.LIVE -> current.copy(isLoadingLive = true, liveError = null)
+                CategoryType.VOD -> current.copy(isLoadingVod = true, vodError = null)
+                CategoryType.SERIES -> current.copy(isLoadingSeries = true, seriesError = null)
+            }
+            state.copy(contentCategoriesState = updated)
+        }
+
+        fetchCategoriesForList(currentList, type)
     }
 
     /**
@@ -476,21 +528,37 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     return@update state
                 }
 
+                val feedbackMessage = when (result) {
+                    is CategoryLoadResult.Empty -> when (type) {
+                        CategoryType.LIVE -> "Nenhuma categoria de TV ao vivo encontrada"
+                        CategoryType.VOD -> "Nenhuma categoria de filmes encontrada"
+                        CategoryType.SERIES -> "Nenhuma categoria de séries encontrada"
+                    }
+                    is CategoryLoadResult.ParseError -> result.displayMessage
+                    is CategoryLoadResult.NetworkError -> result.displayMessage
+                    is CategoryLoadResult.AuthError -> result.displayMessage
+                    is CategoryLoadResult.Error -> result.displayMessage
+                    is CategoryLoadResult.Success -> null
+                }
+
                 val updatedState = when (result) {
                     is CategoryLoadResult.Success -> {
                         when (type) {
                             CategoryType.LIVE -> currentCatState.copy(
                                 liveCategories = result.categories,
+                                isLiveLoaded = true,
                                 isLoadingLive = false,
                                 liveError = null
                             )
                             CategoryType.VOD -> currentCatState.copy(
                                 vodCategories = result.categories,
+                                isVodLoaded = true,
                                 isLoadingVod = false,
                                 vodError = null
                             )
                             CategoryType.SERIES -> currentCatState.copy(
                                 seriesCategories = result.categories,
+                                isSeriesLoaded = true,
                                 isLoadingSeries = false,
                                 seriesError = null
                             )
@@ -500,16 +568,19 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         when (type) {
                             CategoryType.LIVE -> currentCatState.copy(
                                 liveCategories = emptyList(),
+                                isLiveLoaded = true,
                                 isLoadingLive = false,
                                 liveError = null
                             )
                             CategoryType.VOD -> currentCatState.copy(
                                 vodCategories = emptyList(),
+                                isVodLoaded = true,
                                 isLoadingVod = false,
                                 vodError = null
                             )
                             CategoryType.SERIES -> currentCatState.copy(
                                 seriesCategories = emptyList(),
+                                isSeriesLoaded = true,
                                 isLoadingSeries = false,
                                 seriesError = null
                             )
@@ -518,14 +589,17 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     is CategoryLoadResult.ParseError -> {
                         when (type) {
                             CategoryType.LIVE -> currentCatState.copy(
+                                isLiveLoaded = false,
                                 isLoadingLive = false,
                                 liveError = result.displayMessage
                             )
                             CategoryType.VOD -> currentCatState.copy(
+                                isVodLoaded = false,
                                 isLoadingVod = false,
                                 vodError = result.displayMessage
                             )
                             CategoryType.SERIES -> currentCatState.copy(
+                                isSeriesLoaded = false,
                                 isLoadingSeries = false,
                                 seriesError = result.displayMessage
                             )
@@ -534,14 +608,17 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     is CategoryLoadResult.NetworkError -> {
                         when (type) {
                             CategoryType.LIVE -> currentCatState.copy(
+                                isLiveLoaded = false,
                                 isLoadingLive = false,
                                 liveError = result.displayMessage
                             )
                             CategoryType.VOD -> currentCatState.copy(
+                                isVodLoaded = false,
                                 isLoadingVod = false,
                                 vodError = result.displayMessage
                             )
                             CategoryType.SERIES -> currentCatState.copy(
+                                isSeriesLoaded = false,
                                 isLoadingSeries = false,
                                 seriesError = result.displayMessage
                             )
@@ -550,14 +627,17 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     is CategoryLoadResult.AuthError -> {
                         when (type) {
                             CategoryType.LIVE -> currentCatState.copy(
+                                isLiveLoaded = false,
                                 isLoadingLive = false,
                                 liveError = result.displayMessage
                             )
                             CategoryType.VOD -> currentCatState.copy(
+                                isVodLoaded = false,
                                 isLoadingVod = false,
                                 vodError = result.displayMessage
                             )
                             CategoryType.SERIES -> currentCatState.copy(
+                                isSeriesLoaded = false,
                                 isLoadingSeries = false,
                                 seriesError = result.displayMessage
                             )
@@ -566,14 +646,17 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     is CategoryLoadResult.Error -> {
                         when (type) {
                             CategoryType.LIVE -> currentCatState.copy(
+                                isLiveLoaded = false,
                                 isLoadingLive = false,
                                 liveError = result.displayMessage
                             )
                             CategoryType.VOD -> currentCatState.copy(
+                                isVodLoaded = false,
                                 isLoadingVod = false,
                                 vodError = result.displayMessage
                             )
                             CategoryType.SERIES -> currentCatState.copy(
+                                isSeriesLoaded = false,
                                 isLoadingSeries = false,
                                 seriesError = result.displayMessage
                             )
@@ -581,7 +664,10 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     }
                 }
 
-                state.copy(contentCategoriesState = updatedState)
+                state.copy(
+                    contentCategoriesState = updatedState,
+                    toastFeedback = feedbackMessage ?: state.toastFeedback
+                )
             }
         }
     }
