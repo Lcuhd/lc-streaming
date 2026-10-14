@@ -1,5 +1,13 @@
 package com.example.domain.model
 
+const val VIRTUAL_FAVORITES_CATEGORY_ID = "VIRTUAL_FAVORITES"
+
+fun createFavoritesCategory(type: CategoryType): XtreamCategory = XtreamCategory(
+    categoryId = VIRTUAL_FAVORITES_CATEGORY_ID,
+    categoryName = "★ Favoritos",
+    type = type
+)
+
 /**
  * Tipos de conteúdo suportados na API Xtream Codes para consulta de categorias.
  */

@@ -75,11 +75,12 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `verify formatExpiresAt converts ISO date or provides fallback`() {
+    fun `verify formatExpiresAt converts ISO date or provides Ilimitado for null blank or 10plus years`() {
+        assertEquals("Ilimitado", formatExpiresAt(null))
+        assertEquals("Ilimitado", formatExpiresAt(""))
+        assertEquals("Ilimitado", formatExpiresAt("2099-12-31T23:59:59Z"))
         assertEquals("30/11/2026", formatExpiresAt("2026-11-30T23:59:59Z"))
         assertEquals("15/12/2026", formatExpiresAt("2026-12-15T10:00:00Z"))
-        assertEquals("Sem validade definida", formatExpiresAt(null))
-        assertEquals("Sem validade definida", formatExpiresAt(""))
     }
 
     @Test

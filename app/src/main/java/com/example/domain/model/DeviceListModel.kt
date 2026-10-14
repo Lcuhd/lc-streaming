@@ -1,6 +1,7 @@
 package com.example.domain.model
 
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 
 /**
@@ -45,35 +46,43 @@ data class DeviceListModel(
 )
 
 /**
- * Converte strings ISO 8601 (ex: "2026-11-30T23:59:59Z") para formato legível "30/11/2026".
- * Caso não exista validade definida, retorna "Sem validade definida".
- * Não calcula vencimento localmente; a fonte de verdade é o status retornado pelo backend.
+ * Formata a data de validade da ativação no LC Player respeitando a regra centralizada de exibição:
+ * 1. Data nula, vazia ou em branco -> "Ilimitado"
+ * 2. Data no futuro a 10 anos ou mais em relação à data atual -> "Ilimitado"
+ * 3. Data no futuro a menos de 10 anos -> data real formatada em "dd/MM/yyyy"
+ * 4. Data vencida no passado -> data real formatada em "dd/MM/yyyy" (não ilimitado)
+ *
+ * O valor bruto retornado pela API permanece 100% inalterado.
  */
-fun formatExpiresAt(rawDate: String?): String {
-    if (rawDate.isNullOrBlank()) return "Sem validade definida"
+fun formatAppExpiration(rawDate: String?): String {
+    if (rawDate.isNullOrBlank()) return "Ilimitado"
+
     return try {
-        // Extrai a parte da data YYYY-MM-DD
         val datePart = if (rawDate.contains("T")) {
             rawDate.substringBefore("T")
         } else {
             rawDate.take(10)
         }
 
-        if (datePart.length == 10 && datePart[4] == '-' && datePart[7] == '-') {
-            val year = datePart.substring(0, 4)
-            val month = datePart.substring(5, 7)
-            val day = datePart.substring(8, 10)
-            "$day/$month/$year"
+        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val parsedDate = parser.parse(datePart) ?: return "Ilimitado"
+
+        val tenYearsFromNow = Calendar.getInstance().apply {
+            add(Calendar.YEAR, 10)
+        }.time
+
+        if (!parsedDate.before(tenYearsFromNow)) {
+            "Ilimitado"
         } else {
-            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val date = parser.parse(datePart)
-            if (date != null) {
-                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(date)
-            } else {
-                "Sem validade definida"
-            }
+            val formatter = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            formatter.format(parsedDate)
         }
     } catch (_: Exception) {
-        "Sem validade definida"
+        "Ilimitado"
     }
 }
+
+/**
+ * Alias mantido para compatibilidade retroativa com todo o projeto.
+ */
+fun formatExpiresAt(rawDate: String?): String = formatAppExpiration(rawDate)

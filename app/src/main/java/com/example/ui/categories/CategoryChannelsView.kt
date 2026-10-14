@@ -32,6 +32,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.PlayArrow
@@ -46,7 +48,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -108,6 +112,8 @@ fun CategoryChannelsView(
     onRefreshClick: () -> Unit,
     onChannelClick: (LiveStreamChannel) -> Unit,
     onChannelFocused: ((streamId: String) -> Unit)? = null,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null,
     modifier: Modifier = Modifier
 ) {
     val backButtonFocusRequester = remember { FocusRequester() }
@@ -140,6 +146,8 @@ fun CategoryChannelsView(
                 onRefreshClick = onRefreshClick,
                 onChannelClick = onChannelClick,
                 onChannelFocused = onChannelFocused,
+                onIsFavorite = onIsFavorite,
+                onToggleFavorite = onToggleFavorite,
                 backFocusRequester = backButtonFocusRequester
             )
         } else {
@@ -180,6 +188,8 @@ private fun WideThreePaneChannelsView(
     onRefreshClick: () -> Unit,
     onChannelClick: (LiveStreamChannel) -> Unit,
     onChannelFocused: ((streamId: String) -> Unit)?,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null,
     backFocusRequester: FocusRequester
 ) {
     var focusedChannel by remember(category.categoryId, channels) {
@@ -465,40 +475,90 @@ private fun WideThreePaneChannelsView(
                             }
                         }
 
-                        // Informações do Canal Selecionado
+                        // Informações do Canal Selecionado + Botão Favoritar [♥]
+                        var isChannelFavorite by remember { mutableStateOf(false) }
+                        val coroutineScope = rememberCoroutineScope()
+
+                        LaunchedEffect(curChannel.streamId) {
+                            if (onIsFavorite != null) {
+                                try {
+                                    isChannelFavorite = onIsFavorite(curChannel.streamId)
+                                } catch (_: Exception) {}
+                            }
+                        }
+
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(AppCorners.md)
-                                    .background(Color(0xFF142033)),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                if (!curChannel.streamIcon.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = curChannel.streamIcon,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize().padding(3.dp),
-                                        contentScale = ContentScale.Fit
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(AppCorners.md)
+                                        .background(Color(0xFF142033)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (!curChannel.streamIcon.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = curChannel.streamIcon,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize().padding(3.dp),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    } else {
+                                        Icon(imageVector = Icons.Default.LiveTv, contentDescription = null, tint = TvSecondaryBlue, modifier = Modifier.size(22.dp))
+                                    }
+                                }
+
+                                Column {
+                                    Text(
+                                        text = "${curChannel.num?.let { "#$it • " } ?: ""}${curChannel.name}",
+                                        color = Color.White,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                } else {
-                                    Icon(imageVector = Icons.Default.LiveTv, contentDescription = null, tint = TvSecondaryBlue, modifier = Modifier.size(22.dp))
+                                    Text(text = "Sintonizado na TV ao vivo", color = TvSecondaryBlue, fontSize = 11.sp)
                                 }
                             }
 
-                            Column {
-                                Text(
-                                    text = "${curChannel.num?.let { "#$it • " } ?: ""}${curChannel.name}",
-                                    color = Color.White,
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                            // Botão Favoritar Canal [♥]
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(AppCorners.md)
+                                    .background(if (isChannelFavorite) Color(0x33FF3D71) else TvSurface)
+                                    .border(1.dp, if (isChannelFavorite) Color(0xFFFF3D71) else TvSurfaceVariant, AppCorners.md)
+                                    .tvFocusable(
+                                        shape = AppCorners.md,
+                                        focusBorderColor = Color.White,
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                if (onToggleFavorite != null) {
+                                                    try {
+                                                        isChannelFavorite = onToggleFavorite(curChannel.streamId)
+                                                    } catch (_: Exception) {}
+                                                } else {
+                                                    isChannelFavorite = !isChannelFavorite
+                                                }
+                                            }
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isChannelFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = "Favoritar canal",
+                                    tint = if (isChannelFavorite) Color(0xFFFF3D71) else Color.White,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                Text(text = "Sintonizado na TV ao vivo", color = TvSecondaryBlue, fontSize = 11.sp)
                             }
                         }
 

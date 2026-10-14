@@ -1,10 +1,12 @@
 package com.example.ui.activation
 
 import android.app.Application
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
+import com.example.data.local.entity.SeriesProgressEntity
 import com.example.data.remote.LcAdminDeleteResponse
 import com.example.data.remote.LcAdminListsResponse
 import com.example.data.remote.LcAdminResponse
@@ -52,7 +54,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     private val repository = DeviceRepository(
         context = application,
         deviceInfoDao = database.deviceInfoDao(),
-        seriesProgressDao = database.seriesProgressDao()
+        seriesProgressDao = database.seriesProgressDao(),
+        favoriteDao = database.favoriteDao()
     )
 
     private val xtreamEpgClient = XtreamEpgClient()
@@ -253,6 +256,85 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /**
+     * Atualização exclusiva de listas acionada a partir da tela de Configurações.
+     * Consulta unicamente o endpoint LC Admin (/device-lists) sem disparar requisições Xtream.
+     */
+    fun refreshDeviceListsFromSettings() {
+        if (_uiState.value.isLoadingLists) {
+            Log.d(TAG, "[SETTINGS_REFRESH_LISTS_START] Consulta ignorada: carregamento já em andamento")
+            return
+        }
+
+        val currentDeviceId = _uiState.value.deviceId
+        val currentKey = _uiState.value.key
+
+        Log.i(TAG, "[SETTINGS_REFRESH_LISTS_START] Solicitando atualização de listas no LC Admin (/device-lists)...")
+        val startTime = SystemClock.elapsedRealtime()
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingLists = true, listsFeedbackMessage = null) }
+
+            val response = repository.fetchDeviceListsOnline(currentDeviceId, currentKey)
+            val durationMs = SystemClock.elapsedRealtime() - startTime
+
+            when (response) {
+                is LcAdminListsResponse.Success -> {
+                    Log.i(
+                        TAG,
+                        "[SETTINGS_REFRESH_LISTS_RESPONSE] HTTP 200 - ${response.lists.size} listas recebidas em ${durationMs}ms"
+                    )
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoadingLists = false,
+                            status = response.deviceStatus,
+                            lists = response.lists,
+                            listsFeedbackMessage = response.displayMessage,
+                            toastFeedback = "Listas atualizadas com sucesso"
+                        )
+                    }
+                }
+                is LcAdminListsResponse.Error -> {
+                    Log.w(
+                        TAG,
+                        "[SETTINGS_REFRESH_LISTS_ERROR] Falha ao atualizar listas em ${durationMs}ms: ${response.displayMessage}"
+                    )
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoadingLists = false,
+                            listsFeedbackMessage = response.displayMessage,
+                            toastFeedback = response.displayMessage
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Limpa com segurança o cache temporário de categorias em memória sem afetar Device ID, KEY ou ativação.
+     */
+    fun clearCategoriesCache() {
+        Log.i(TAG, "Limpando cache temporário de categorias em memória...")
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    liveCategories = emptyList(),
+                    vodCategories = emptyList(),
+                    seriesCategories = emptyList(),
+                    isLiveLoaded = false,
+                    isVodLoaded = false,
+                    isSeriesLoaded = false,
+                    liveError = null,
+                    vodError = null,
+                    seriesError = null
+                ),
+                toastFeedback = "Cache temporário limpo com sucesso"
+            )
+        }
+    }
+
     fun navigateToSection(section: AppScreenSection) {
         _uiState.update { it.copy(currentSection = section) }
         // Se navegou para Minhas Listas e a lista está vazia, dispara a busca
@@ -417,6 +499,10 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
     fun closeSystemInfo() {
         _uiState.update { it.copy(showSystemInfoModal = false) }
+    }
+
+    fun showToastFeedback(message: String) {
+        _uiState.update { it.copy(toastFeedback = message) }
     }
 
     fun clearToastFeedback() {
@@ -774,6 +860,31 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             "Iniciando abertura de canais para a categoria: '${category.categoryName}' (ID: ${category.categoryId}) da lista '${currentList.title}'"
         )
 
+        if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
+            viewModelScope.launch {
+                val favoriteIds = repository.getFavoriteIds(currentList.id, "LIVE")
+                val availableChannels = catState.liveStreamsState?.channels ?: emptyList()
+                val favoriteChannels = availableChannels.filter { it.streamId in favoriteIds }
+
+                _uiState.update { state ->
+                    val current = state.contentCategoriesState ?: return@update state
+                    state.copy(
+                        contentCategoriesState = current.copy(
+                            selectedCategoryForChannels = category,
+                            liveStreamsState = LiveStreamsState(
+                                categoryId = category.categoryId,
+                                categoryName = category.categoryName,
+                                channels = favoriteChannels,
+                                isLoading = false,
+                                errorMessage = if (favoriteChannels.isEmpty()) "Nenhum canal favoritado nesta lista" else null
+                            )
+                        )
+                    )
+                }
+            }
+            return
+        }
+
         _uiState.update { state ->
             val current = state.contentCategoriesState ?: return@update state
             state.copy(
@@ -942,6 +1053,31 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             "Iniciando abertura de filmes para a categoria VOD: '${category.categoryName}' (ID: ${category.categoryId}) da lista '${currentList.title}'"
         )
 
+        if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
+            viewModelScope.launch {
+                val favoriteIds = repository.getFavoriteIds(currentList.id, "VOD")
+                val availableMovies = catState.vodStreamsState?.movies ?: emptyList()
+                val favoriteMovies = availableMovies.filter { it.streamId in favoriteIds }
+
+                _uiState.update { state ->
+                    val current = state.contentCategoriesState ?: return@update state
+                    state.copy(
+                        contentCategoriesState = current.copy(
+                            selectedCategoryForChannels = category,
+                            vodStreamsState = VodStreamsState(
+                                categoryId = category.categoryId,
+                                categoryName = category.categoryName,
+                                movies = favoriteMovies,
+                                isLoading = false,
+                                errorMessage = if (favoriteMovies.isEmpty()) "Nenhum filme favoritado nesta lista" else null
+                            )
+                        )
+                    )
+                }
+            }
+            return
+        }
+
         _uiState.update { state ->
             val current = state.contentCategoriesState ?: return@update state
             state.copy(
@@ -1066,7 +1202,18 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * Inicia a reprodução real de um filme VOD selecionado pelo usuário.
+     * Retorna o progresso de reprodução salvo no Room DB para um filme VOD específico.
+     */
+    suspend fun getMovieProgress(movie: VodMovie): SeriesProgressEntity? {
+        val catState = _uiState.value.contentCategoriesState
+        val listId = catState?.listId ?: _uiState.value.selectedListId
+        val movieKey = "${listId}_VOD_${movie.streamId}"
+        return repository.getEpisodeProgress(movieKey)
+    }
+
+    /**
+     * Inicia a reprodução real de um filme VOD selecionado pelo usuário,
+     * buscando a posição salva caso exista progresso anterior.
      */
     fun playVodMovie(movie: VodMovie) {
         val catState = _uiState.value.contentCategoriesState
@@ -1079,42 +1226,54 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
-        val movieUrl = XtreamStreamUrlBuilder.buildVodMovieUrl(
-            rawDns = currentList.dns,
-            username = currentList.username,
-            password = currentList.password,
-            streamId = movie.streamId,
-            containerExtension = movie.containerExtension
-        )
+        viewModelScope.launch {
+            val movieKey = "${listId}_VOD_${movie.streamId}"
+            val progress = repository.getEpisodeProgress(movieKey)
 
-        Log.i(
-            TAG,
-            "Iniciando reprodução do filme VOD: '${movie.name}' (stream_id=${movie.streamId}, ext=${movie.containerExtension ?: "mp4"})"
-        )
+            val startPositionMs = if (progress != null && !progress.completed && progress.positionMs > 0 && progress.positionMs < 0.92 * progress.durationMs) {
+                progress.positionMs
+            } else {
+                0L
+            }
 
-        val channelModel = LiveStreamChannel(
-            streamId = movie.streamId,
-            name = movie.name,
-            streamIcon = movie.streamIcon,
-            categoryId = movie.categoryId,
-            streamType = "movie"
-        )
-
-        _uiState.update { state ->
-            state.copy(
-                currentSection = AppScreenSection.LIVE_PLAYER,
-                livePlayerState = LivePlayerState(
-                    channel = channelModel,
-                    listId = currentList.id,
-                    listTitle = currentList.title,
-                    playbackUrl = movieUrl,
-                    isPlaying = false,
-                    isBuffering = true,
-                    errorMessage = null,
-                    showControls = true,
-                    epgState = null
-                )
+            val movieUrl = XtreamStreamUrlBuilder.buildVodMovieUrl(
+                rawDns = currentList.dns,
+                username = currentList.username,
+                password = currentList.password,
+                streamId = movie.streamId,
+                containerExtension = movie.containerExtension
             )
+
+            Log.i(
+                TAG,
+                "Iniciando reprodução do filme VOD: '${movie.name}' (stream_id=${movie.streamId}, startPos=${startPositionMs}ms)"
+            )
+
+            val channelModel = LiveStreamChannel(
+                streamId = movie.streamId,
+                name = movie.name,
+                streamIcon = movie.streamIcon,
+                categoryId = movie.categoryId,
+                streamType = "movie"
+            )
+
+            _uiState.update { state ->
+                state.copy(
+                    currentSection = AppScreenSection.LIVE_PLAYER,
+                    livePlayerState = LivePlayerState(
+                        channel = channelModel,
+                        listId = currentList.id,
+                        listTitle = currentList.title,
+                        playbackUrl = movieUrl,
+                        isPlaying = false,
+                        isBuffering = true,
+                        errorMessage = null,
+                        showControls = true,
+                        epgState = null,
+                        startPositionMs = startPositionMs
+                    )
+                )
+            }
         }
     }
 
@@ -1129,6 +1288,31 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             TAG,
             "Iniciando abertura de séries para a categoria: '${category.categoryName}' (ID: ${category.categoryId}) da lista '${currentList.title}'"
         )
+
+        if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
+            viewModelScope.launch {
+                val favoriteIds = repository.getFavoriteIds(currentList.id, "SERIES")
+                val availableSeries = catState.seriesState?.seriesList ?: emptyList()
+                val favoriteSeries = availableSeries.filter { it.seriesId in favoriteIds }
+
+                _uiState.update { state ->
+                    val current = state.contentCategoriesState ?: return@update state
+                    state.copy(
+                        contentCategoriesState = current.copy(
+                            selectedCategoryForChannels = category,
+                            seriesState = SeriesState(
+                                categoryId = category.categoryId,
+                                categoryName = category.categoryName,
+                                seriesList = favoriteSeries,
+                                isLoading = false,
+                                errorMessage = if (favoriteSeries.isEmpty()) "Nenhuma série favoritada nesta lista" else null
+                            )
+                        )
+                    )
+                }
+            }
+            return
+        }
 
         _uiState.update { state ->
             val current = state.contentCategoriesState ?: return@update state
@@ -1469,7 +1653,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * Salva o progresso local de reprodução de um episódio durante a execução do player.
+     * Salva o progresso local de reprodução de um episódio de série ou filme VOD no Room DB.
      */
     fun savePlayerEpisodeProgress(
         positionMs: Long,
@@ -1477,27 +1661,46 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         forceCompleted: Boolean = false
     ) {
         val playerState = _uiState.value.livePlayerState ?: return
-        val seriesId = playerState.seriesId ?: return
-        val episodeId = playerState.episodeId ?: return
-        val seasonNum = playerState.seasonNum ?: return
-        val episodeNum = playerState.episodeNum ?: return
+        val listId = playerState.listId
 
         if (durationMs <= 0) return
 
         val completed = forceCompleted || (positionMs >= 0.92 * durationMs)
         val finalPos = if (completed) durationMs else positionMs
 
-        viewModelScope.launch {
-            repository.saveEpisodeProgress(
-                seriesId = seriesId,
-                episodeId = episodeId,
-                seasonNum = seasonNum,
-                episodeNum = episodeNum,
-                positionMs = finalPos,
-                durationMs = durationMs,
-                completed = completed
-            )
-            refreshSeriesDetailsProgress(seriesId)
+        val seriesId = playerState.seriesId
+        val episodeId = playerState.episodeId
+
+        if (seriesId != null && episodeId != null) {
+            val seasonNum = playerState.seasonNum ?: 1
+            val episodeNum = playerState.episodeNum ?: 1
+            viewModelScope.launch {
+                repository.saveEpisodeProgress(
+                    seriesId = seriesId,
+                    episodeId = episodeId,
+                    seasonNum = seasonNum,
+                    episodeNum = episodeNum,
+                    positionMs = finalPos,
+                    durationMs = durationMs,
+                    completed = completed
+                )
+                refreshSeriesDetailsProgress(seriesId)
+            }
+        } else if (playerState.channel.streamType == "movie") {
+            val movieId = playerState.channel.streamId
+            val movieKey = "${listId}_VOD_${movieId}"
+            val vodSeriesId = "VOD_${listId}"
+            viewModelScope.launch {
+                repository.saveEpisodeProgress(
+                    seriesId = vodSeriesId,
+                    episodeId = movieKey,
+                    seasonNum = 0,
+                    episodeNum = 0,
+                    positionMs = finalPos,
+                    durationMs = durationMs,
+                    completed = completed
+                )
+            }
         }
     }
 
@@ -1798,6 +2001,36 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 )
             )
         }
+    }
+
+    /**
+     * Verifica se um conteúdo específico (LIVE, VOD ou SERIES) está favoritado na lista ativa.
+     */
+    suspend fun isContentFavorite(contentType: String, contentId: String): Boolean {
+        val catState = _uiState.value.contentCategoriesState
+        val listId = catState?.listId ?: _uiState.value.selectedListId ?: return false
+        return repository.isFavorite(listId, contentType, contentId)
+    }
+
+    /**
+     * Alterna o estado de favorito do conteúdo e exibe feedback imediato em toast.
+     */
+    suspend fun toggleFavorite(contentType: String, contentId: String): Boolean {
+        val catState = _uiState.value.contentCategoriesState
+        val listId = catState?.listId ?: _uiState.value.selectedListId ?: return false
+        val result = repository.toggleFavorite(listId, contentType, contentId)
+        val msg = if (result) "Adicionado aos favoritos" else "Removido dos favoritos"
+        _uiState.update { it.copy(toastFeedback = msg) }
+        return result
+    }
+
+    /**
+     * Retorna o conjunto de IDs de conteúdos favoritados para a lista e tipo selecionados.
+     */
+    suspend fun getFavoriteIds(contentType: String): Set<String> {
+        val catState = _uiState.value.contentCategoriesState
+        val listId = catState?.listId ?: _uiState.value.selectedListId ?: return emptySet()
+        return repository.getFavoriteIds(listId, contentType)
     }
 
     /**

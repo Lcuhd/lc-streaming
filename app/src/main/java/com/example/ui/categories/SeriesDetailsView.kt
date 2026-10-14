@@ -41,7 +41,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -91,6 +94,8 @@ fun SeriesDetailsView(
     onSelectSeason: (seasonNum: Int) -> Unit,
     onEpisodeClick: (EpisodeItem) -> Unit,
     onRetryClick: () -> Unit,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null,
     modifier: Modifier = Modifier
 ) {
     val backButtonFocusRequester = remember { FocusRequester() }
@@ -134,6 +139,7 @@ fun SeriesDetailsView(
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Hero Cinematográfico com Backdrop + Degradê + Metadados + Botões (Iniciar/Continuar + Favoritar)
                         SeriesHeroHeaderCard(
+                            seriesId = seriesItem?.seriesId.orEmpty(),
                             cover = details.cover ?: seriesItem?.backdropPath?.firstOrNull() ?: seriesItem?.cover,
                             title = details.title,
                             rating = details.rating ?: seriesItem?.rating,
@@ -145,6 +151,8 @@ fun SeriesDetailsView(
                             isWideLayout = isWideLayout,
                             onBackClick = onBackClick,
                             onPrimaryButtonClick = onPrimaryButtonClick,
+                            onIsFavorite = onIsFavorite,
+                            onToggleFavorite = onToggleFavorite,
                             backButtonFocusRequester = backButtonFocusRequester
                         )
 
@@ -230,6 +238,7 @@ fun SeriesDetailsView(
  */
 @Composable
 private fun SeriesHeroHeaderCard(
+    seriesId: String,
     cover: String?,
     title: String,
     rating: String?,
@@ -241,9 +250,20 @@ private fun SeriesHeroHeaderCard(
     isWideLayout: Boolean,
     onBackClick: () -> Unit,
     onPrimaryButtonClick: () -> Unit,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null,
     backButtonFocusRequester: FocusRequester
 ) {
     var isFavorite by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(seriesId) {
+        if (onIsFavorite != null && seriesId.isNotBlank()) {
+            try {
+                isFavorite = onIsFavorite(seriesId)
+            } catch (_: Exception) {}
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -400,7 +420,17 @@ private fun SeriesHeroHeaderCard(
                         .tvFocusable(
                             shape = AppCorners.md,
                             focusBorderColor = Color.White,
-                            onClick = { isFavorite = !isFavorite }
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (onToggleFavorite != null && seriesId.isNotBlank()) {
+                                        try {
+                                            isFavorite = onToggleFavorite(seriesId)
+                                        } catch (_: Exception) {}
+                                    } else {
+                                        isFavorite = !isFavorite
+                                    }
+                                }
+                            }
                         )
                         .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center
@@ -411,12 +441,12 @@ private fun SeriesHeroHeaderCard(
                     ) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Favoritar",
+                            contentDescription = stringResource(R.string.btn_favorite),
                             tint = if (isFavorite) Color(0xFFFF3D71) else Color.White,
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = if (isFavorite) "Favoritado" else "Favoritar",
+                            text = if (isFavorite) stringResource(R.string.btn_favorited) else stringResource(R.string.btn_favorite),
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold

@@ -42,7 +42,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.local.entity.SeriesProgressEntity
 import com.example.domain.model.VodMovie
 import com.example.domain.model.VodStreamsState
 import com.example.domain.model.XtreamCategory
@@ -91,6 +95,9 @@ fun CategoryVodMoviesView(
     onBackClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onMovieClick: (VodMovie) -> Unit,
+    onGetMovieProgress: (suspend (VodMovie) -> SeriesProgressEntity?)? = null,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null,
     modifier: Modifier = Modifier
 ) {
     val backButtonFocusRequester = remember { FocusRequester() }
@@ -117,7 +124,10 @@ fun CategoryVodMoviesView(
             onPlayMovie = { movie ->
                 selectedMovieForDetails = null
                 onMovieClick(movie)
-            }
+            },
+            onGetMovieProgress = onGetMovieProgress,
+            onIsFavorite = onIsFavorite,
+            onToggleFavorite = onToggleFavorite
         )
     } else {
         BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -162,16 +172,39 @@ fun MovieDetailsView(
     movie: VodMovie,
     onBackClick: () -> Unit,
     onPlayMovie: (VodMovie) -> Unit,
+    onGetMovieProgress: (suspend (VodMovie) -> SeriesProgressEntity?)? = null,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null,
     modifier: Modifier = Modifier
 ) {
     var isFavorite by remember { mutableStateOf(false) }
+    var movieProgress by remember { mutableStateOf<SeriesProgressEntity?>(null) }
     val backButtonFocusRequester = remember { FocusRequester() }
     val playButtonFocusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        try {
-            playButtonFocusRequester.requestFocus()
-        } catch (_: Exception) {}
+    LaunchedEffect(movie.streamId) {
+        if (onGetMovieProgress != null) {
+            try {
+                movieProgress = onGetMovieProgress(movie)
+            } catch (_: Exception) {}
+        }
+        if (onIsFavorite != null) {
+            try {
+                isFavorite = onIsFavorite(movie.streamId)
+            } catch (_: Exception) {}
+        }
+    }
+
+    val isResumeAvailable = movieProgress != null &&
+                            !movieProgress!!.completed &&
+                            movieProgress!!.positionMs > 0 &&
+                            movieProgress!!.positionMs < 0.92 * movieProgress!!.durationMs
+
+    val watchButtonLabel = if (isResumeAvailable) {
+        stringResource(R.string.btn_continue)
+    } else {
+        stringResource(R.string.btn_watch)
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color(0xFF050810))) {
@@ -352,7 +385,7 @@ fun MovieDetailsView(
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Text(
-                                    text = "Assistir",
+                                    text = watchButtonLabel,
                                     color = Color.White,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
@@ -370,7 +403,17 @@ fun MovieDetailsView(
                                 .tvFocusable(
                                     shape = AppCorners.md,
                                     focusBorderColor = Color.White,
-                                    onClick = { isFavorite = !isFavorite }
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            if (onToggleFavorite != null) {
+                                                try {
+                                                    isFavorite = onToggleFavorite(movie.streamId)
+                                                } catch (_: Exception) {}
+                                            } else {
+                                                isFavorite = !isFavorite
+                                            }
+                                        }
+                                    }
                                 )
                                 .padding(horizontal = 14.dp),
                             contentAlignment = Alignment.Center
@@ -381,12 +424,12 @@ fun MovieDetailsView(
                             ) {
                                 Icon(
                                     imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Favoritar",
+                                    contentDescription = stringResource(R.string.btn_favorite),
                                     tint = if (isFavorite) Color(0xFFFF3D71) else Color.White,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = if (isFavorite) "Favoritado" else "Favoritar",
+                                    text = if (isFavorite) stringResource(R.string.btn_favorited) else stringResource(R.string.btn_favorite),
                                     color = Color.White,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -408,7 +451,7 @@ fun MovieDetailsView(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Sinopse",
+                        text = stringResource(R.string.lbl_synopsis),
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold

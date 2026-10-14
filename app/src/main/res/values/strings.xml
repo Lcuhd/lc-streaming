@@ -1,20 +1,83 @@
 <resources>
     <string name="app_name">LC Player</string>
+
+    <!-- Navegação e Home -->
+    <string name="nav_live_tv">TV ONLINE</string>
+    <string name="nav_movies">FILMES</string>
+    <string name="nav_series">SÉRIES</string>
+    <string name="nav_settings">Configurações</string>
+
+    <!-- Configurações - Seções -->
+    <string name="settings_title">CONFIGURAÇÕES</string>
+    <string name="settings_section_playback">REPRODUÇÃO</string>
+    <string name="settings_section_interface">INTERFACE</string>
+    <string name="settings_section_lists">LISTAS E CONTA</string>
+    <string name="settings_section_device">DISPOSITIVO E SEGURANÇA</string>
+    <string name="settings_section_maintenance">MANUTENÇÃO</string>
+    <string name="settings_section_about">SOBRE O LC PLAYER</string>
+
+    <!-- Configurações - Itens e Ações -->
+    <string name="settings_player_title">Engine do Player</string>
+    <string name="settings_player_subtitle">ExoPlayer (AndroidX Media3 nativo padrão do LC Player)</string>
+    <string name="settings_time_format_title">Formato de Hora</string>
+    <string name="settings_time_format_subtitle">Exibição do relógio no cabeçalho do aplicativo</string>
+    <string name="settings_language_title">Idioma</string>
+    <string name="settings_language_subtitle">Idioma preferido da interface do aplicativo</string>
+    <string name="settings_switch_list">Trocar Lista</string>
+    <string name="settings_switch_list_subtitle">Alternar entre as listas ativas vinculadas à sua conta</string>
+    <string name="settings_refresh_lists">Atualizar Listas</string>
+    <string name="settings_refresh_lists_subtitle">Sincronizar listas e permissões com o servidor LC Admin</string>
+    <string name="settings_clear_cache">Limpar Cache Temporário</string>
+    <string name="settings_clear_cache_subtitle">Esvaziar cache de categorias e imagens em memória sem alterar credenciais</string>
+    <string name="settings_clear_cache_dialog_title">Limpar Cache Temporário?</string>
+    <string name="settings_clear_cache_dialog_msg">Esta ação vai esvaziar os dados temporários de categorias em memória. Seu Device ID, KEY e listas salvas NÃO serão afetados.</string>
+    <string name="settings_qr_pairing">Parear por QR Code</string>
+    <string name="settings_qr_pairing_subtitle">Segurança avançada por token temporário de uso único</string>
+    <string name="settings_parental_control">Controle Parental (PIN)</string>
+    <string name="settings_parental_control_subtitle">Proteção por senha para categorias adultas/restritas</string>
+    <string name="settings_coming_soon">Em breve</string>
+    <string name="settings_about_desc">Player profissional para reprodução de TV ao vivo, Filmes e Séries.</string>
+    <string name="settings_copy">Copiar</string>
+
+    <!-- Feedbacks das Configurações -->
+    <string name="msg_no_other_list">Nenhuma outra lista disponível</string>
+    <string name="msg_no_active_list">Nenhuma lista ativa disponível</string>
+    <string name="msg_lists_refreshed">Listas atualizadas com sucesso</string>
+    <string name="msg_cache_cleared">Cache temporário limpo com sucesso</string>
+    <string name="msg_device_id_copied">Device ID copiado para a área de transferência</string>
+    <string name="msg_key_copied">KEY copiada para a área de transferência</string>
+
+    <!-- Interface Comum, Detalhes e Ações -->
+    <string name="btn_watch">Assistir</string>
+    <string name="btn_start_series">Iniciar série</string>
+    <string name="btn_continue">Continuar</string>
+    <string name="btn_favorite">Favoritar</string>
+    <string name="btn_favorited">Favoritado</string>
+    <string name="btn_back">Voltar</string>
+    <string name="btn_refresh">Atualizar</string>
+    <string name="btn_retry">Tentar Novamente</string>
+    <string name="lbl_synopsis">Sinopse</string>
+    <string name="lbl_seasons">Temporadas</string>
+    <string name="lbl_episodes">Episódios</string>
+    <string name="lbl_categories">CATEGORIAS</string>
+    <string name="lbl_channels">CANAIS</string>
+    <string name="lbl_no_synopsis">Sem descrição disponível.</string>
+    <string name="lbl_server">Servidor</string>
+    <string name="lbl_watch_fullscreen">Assistir em Tela Cheia (OK)</string>
+    <string name="lbl_guide_channels">Guia de Canais</string>
+
+    <!-- Ativação e Dispositivo -->
     <string name="activation_title">Identificação do Dispositivo</string>
     <string name="device_id_label">Device ID</string>
     <string name="device_key_label">KEY</string>
     <string name="status_label">Status</string>
     <string name="activation_notice">Cadastre este dispositivo no LC Admin para continuar.</string>
     <string name="activation_instructions">Use os dados acima no painel LC Admin para associar sua assinatura e liberar o acesso aos conteúdos da sua conta.</string>
-    
-    <!-- Status strings -->
     <string name="status_waiting_activation">Aguardando ativação</string>
     <string name="status_active">Ativo</string>
     <string name="status_blocked">Bloqueado</string>
     <string name="status_expired">Vencido</string>
     <string name="status_connection_error">Erro de conexão</string>
-    
-    <!-- Action buttons -->
     <string name="btn_refresh_status">Verificar Ativação</string>
     <string name="btn_device_info">Informações do Sistema</string>
     <string name="btn_copy_credentials">Copiar Códigos</string>

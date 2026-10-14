@@ -13,6 +13,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.AppSettingsManager
 import com.example.ui.activation.ActivationScreen
 import com.example.ui.activation.ActivationViewModel
 import com.example.ui.activation.AppScreenSection
@@ -27,6 +28,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Aplica o Locale preferido salvo pelo usuário
+        val savedLang = AppSettingsManager.getLanguage(this)
+        AppSettingsManager.applyLanguage(this, savedLang)
+
         enableEdgeToEdge()
         setContent {
             LcPlayerTheme {

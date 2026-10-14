@@ -4,8 +4,10 @@ import android.content.Context
 import com.example.data.generator.DeviceIdentifierGenerator
 import com.example.data.local.DeviceIdentityStorage
 import com.example.data.local.dao.DeviceInfoDao
+import com.example.data.local.dao.FavoriteDao
 import com.example.data.local.dao.SeriesProgressDao
 import com.example.data.local.entity.DeviceInfoEntity
+import com.example.data.local.entity.FavoriteEntity
 import com.example.data.local.entity.SeriesProgressEntity
 import com.example.data.remote.LcAdminApiClient
 import com.example.data.remote.LcAdminDeleteResponse
@@ -41,6 +43,7 @@ class DeviceRepository(
     private val context: Context,
     private val deviceInfoDao: DeviceInfoDao,
     private val seriesProgressDao: SeriesProgressDao? = null,
+    private val favoriteDao: FavoriteDao? = null,
     private val apiClient: LcAdminApiClient = LcAdminApiClient(),
     private val xtreamAuthClient: XtreamAuthClient = XtreamAuthClient(),
     private val xtreamCategoryClient: XtreamCategoryClient = XtreamCategoryClient(),
@@ -322,5 +325,39 @@ class DeviceRepository(
             status = current.status,
             lastCheckedAt = now
         )
+    }
+
+    /**
+     * Alterna o estado de favorito de um conteúdo (LIVE, VOD ou SERIES) para a lista ativa.
+     * Retorna true se foi adicionado aos favoritos ou false se foi removido.
+     */
+    suspend fun toggleFavorite(listId: String, contentType: String, contentId: String): Boolean = withContext(Dispatchers.IO) {
+        val dao = favoriteDao ?: return@withContext false
+        val favoriteId = "${listId}_${contentType}_${contentId}"
+        val exists = dao.isFavorite(favoriteId)
+        if (exists) {
+            dao.removeFavoriteById(favoriteId)
+            false
+        } else {
+            dao.addFavorite(FavoriteEntity(favoriteId, listId, contentType, contentId))
+            true
+        }
+    }
+
+    /**
+     * Verifica se um conteúdo específico é favorito na lista ativa.
+     */
+    suspend fun isFavorite(listId: String, contentType: String, contentId: String): Boolean = withContext(Dispatchers.IO) {
+        val dao = favoriteDao ?: return@withContext false
+        val favoriteId = "${listId}_${contentType}_${contentId}"
+        dao.isFavorite(favoriteId)
+    }
+
+    /**
+     * Retorna o conjunto de IDs favoritados para o tipo de conteúdo e lista informados.
+     */
+    suspend fun getFavoriteIds(listId: String, contentType: String): Set<String> = withContext(Dispatchers.IO) {
+        val dao = favoriteDao ?: return@withContext emptySet()
+        dao.getFavorites(listId, contentType).map { it.contentId }.toSet()
     }
 }

@@ -48,6 +48,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID
+import com.example.domain.model.createFavoritesCategory
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,6 +65,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,6 +79,7 @@ import com.example.domain.model.ListContentCategoriesState
 import com.example.domain.model.XtreamCategory
 import com.example.ui.activation.ActivationViewModel
 import com.example.ui.components.tvFocusable
+import com.example.ui.settings.SettingsScreen
 import com.example.ui.theme.AppCorners
 import com.example.ui.theme.AppSpacing
 import com.example.ui.theme.TvBackground
@@ -109,8 +114,40 @@ fun CategoriesScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val initialFocusRequester = remember { FocusRequester() }
     var showDeviceInfoDialog by remember { mutableStateOf(false) }
+    var showSettingsScreen by remember { mutableStateOf(false) }
     var isInnerCategoryExplorerOpen by remember { mutableStateOf(false) }
     var pendingDirectOpen by remember { mutableStateOf<CategoryType?>(null) }
+
+    val liveFavoriteIds by produceState<Set<String>>(initialValue = emptySet(), categoriesState?.liveCategories, uiState.toastFeedback) {
+        value = viewModel.getFavoriteIds("LIVE")
+    }
+    val vodFavoriteIds by produceState<Set<String>>(initialValue = emptySet(), categoriesState?.vodCategories, uiState.toastFeedback) {
+        value = viewModel.getFavoriteIds("VOD")
+    }
+    val seriesFavoriteIds by produceState<Set<String>>(initialValue = emptySet(), categoriesState?.seriesCategories, uiState.toastFeedback) {
+        value = viewModel.getFavoriteIds("SERIES")
+    }
+
+    val displayLiveCategories = remember(categoriesState?.liveCategories, liveFavoriteIds) {
+        val base = categoriesState?.liveCategories ?: emptyList()
+        if (liveFavoriteIds.isNotEmpty()) {
+            listOf(createFavoritesCategory(CategoryType.LIVE)) + base.filter { it.categoryId != VIRTUAL_FAVORITES_CATEGORY_ID }
+        } else base.filter { it.categoryId != VIRTUAL_FAVORITES_CATEGORY_ID }
+    }
+
+    val displayVodCategories = remember(categoriesState?.vodCategories, vodFavoriteIds) {
+        val base = categoriesState?.vodCategories ?: emptyList()
+        if (vodFavoriteIds.isNotEmpty()) {
+            listOf(createFavoritesCategory(CategoryType.VOD)) + base.filter { it.categoryId != VIRTUAL_FAVORITES_CATEGORY_ID }
+        } else base.filter { it.categoryId != VIRTUAL_FAVORITES_CATEGORY_ID }
+    }
+
+    val displaySeriesCategories = remember(categoriesState?.seriesCategories, seriesFavoriteIds) {
+        val base = categoriesState?.seriesCategories ?: emptyList()
+        if (seriesFavoriteIds.isNotEmpty()) {
+            listOf(createFavoritesCategory(CategoryType.SERIES)) + base.filter { it.categoryId != VIRTUAL_FAVORITES_CATEGORY_ID }
+        } else base.filter { it.categoryId != VIRTUAL_FAVORITES_CATEGORY_ID }
+    }
 
     // Reage SOMENTE a uma ação explícita do usuário na Home (pendingDirectOpen != null)
     LaunchedEffect(
@@ -118,9 +155,9 @@ fun CategoriesScreen(
         categoriesState?.isLiveLoaded,
         categoriesState?.isVodLoaded,
         categoriesState?.isSeriesLoaded,
-        categoriesState?.liveCategories,
-        categoriesState?.vodCategories,
-        categoriesState?.seriesCategories,
+        displayLiveCategories,
+        displayVodCategories,
+        displaySeriesCategories,
         categoriesState?.liveError,
         categoriesState?.vodError,
         categoriesState?.seriesError,
@@ -132,7 +169,7 @@ fun CategoriesScreen(
             when (targetSection) {
                 CategoryType.LIVE -> {
                     if (categoriesState?.isLiveLoaded == true) {
-                        val firstLive = categoriesState.liveCategories.firstOrNull()
+                        val firstLive = displayLiveCategories.firstOrNull()
                         pendingDirectOpen = null
                         if (firstLive != null) {
                             viewModel.openCategory(firstLive)
@@ -143,7 +180,7 @@ fun CategoriesScreen(
                 }
                 CategoryType.VOD -> {
                     if (categoriesState?.isVodLoaded == true) {
-                        val firstVod = categoriesState.vodCategories.firstOrNull()
+                        val firstVod = displayVodCategories.firstOrNull()
                         pendingDirectOpen = null
                         if (firstVod != null) {
                             viewModel.openCategory(firstVod)
@@ -154,7 +191,7 @@ fun CategoriesScreen(
                 }
                 CategoryType.SERIES -> {
                     if (categoriesState?.isSeriesLoaded == true) {
-                        val firstSeries = categoriesState.seriesCategories.firstOrNull()
+                        val firstSeries = displaySeriesCategories.firstOrNull()
                         pendingDirectOpen = null
                         if (firstSeries != null) {
                             viewModel.openCategory(firstSeries)
@@ -168,7 +205,9 @@ fun CategoriesScreen(
     }
 
     BackHandler {
-        if (categoriesState?.seriesDetailsState != null) {
+        if (showSettingsScreen) {
+            showSettingsScreen = false
+        } else if (categoriesState?.seriesDetailsState != null) {
             viewModel.closeSeriesDetails()
         } else if (categoriesState?.selectedCategoryForChannels != null) {
             pendingDirectOpen = null
@@ -229,15 +268,22 @@ fun CategoriesScreen(
                 )
         )
 
-        // Se o detalhe de uma série estiver aberto ou se uma categoria foi selecionada
-        if (categoriesState.seriesDetailsState != null) {
+        // Se a tela de Configurações, o detalhe de uma série ou uma categoria estiver aberta
+        if (showSettingsScreen) {
+            SettingsScreen(
+                viewModel = viewModel,
+                onBackClick = { showSettingsScreen = false }
+            )
+        } else if (categoriesState.seriesDetailsState != null) {
             SeriesDetailsView(
                 detailsState = categoriesState.seriesDetailsState,
                 onBackClick = { viewModel.closeSeriesDetails() },
                 onPrimaryButtonClick = { viewModel.openPrimarySeriesButton() },
                 onSelectSeason = { seasonNum -> viewModel.selectSeasonForSeries(seasonNum) },
                 onEpisodeClick = { episode -> viewModel.playSeriesEpisode(episode) },
-                onRetryClick = { viewModel.retrySeriesDetails() }
+                onRetryClick = { viewModel.retrySeriesDetails() },
+                onIsFavorite = { id -> viewModel.isContentFavorite("SERIES", id) },
+                onToggleFavorite = { id -> viewModel.toggleFavorite("SERIES", id) }
             )
         } else if (categoriesState.selectedCategoryForChannels != null) {
             val selectedCat = categoriesState.selectedCategoryForChannels!!
@@ -245,7 +291,7 @@ fun CategoriesScreen(
                 CategoryType.VOD -> {
                     CategoryVodMoviesView(
                         category = selectedCat,
-                        allCategories = categoriesState.vodCategories,
+                        allCategories = displayVodCategories,
                         onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
                         vodState = categoriesState.vodStreamsState,
                         listTitle = categoriesState.listTitle,
@@ -256,13 +302,18 @@ fun CategoriesScreen(
                         onRefreshClick = { viewModel.retryVodStreamsForCurrentCategory() },
                         onMovieClick = { movie ->
                             viewModel.playVodMovie(movie)
-                        }
+                        },
+                        onGetMovieProgress = { movie ->
+                            viewModel.getMovieProgress(movie)
+                        },
+                        onIsFavorite = { id -> viewModel.isContentFavorite("VOD", id) },
+                        onToggleFavorite = { id -> viewModel.toggleFavorite("VOD", id) }
                     )
                 }
                 CategoryType.SERIES -> {
                     CategorySeriesView(
                         category = selectedCat,
-                        allCategories = categoriesState.seriesCategories,
+                        allCategories = displaySeriesCategories,
                         onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
                         seriesState = categoriesState.seriesState,
                         listTitle = categoriesState.listTitle,
@@ -281,7 +332,7 @@ fun CategoriesScreen(
 
                     CategoryChannelsView(
                         category = selectedCat,
-                        allCategories = categoriesState.liveCategories,
+                        allCategories = displayLiveCategories,
                         activeList = activeList,
                         onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
                         streamsState = categoriesState.liveStreamsState,
@@ -297,7 +348,9 @@ fun CategoriesScreen(
                         },
                         onChannelFocused = { streamId ->
                             viewModel.onChannelFocused(streamId)
-                        }
+                        },
+                        onIsFavorite = { id -> viewModel.isContentFavorite("LIVE", id) },
+                        onToggleFavorite = { id -> viewModel.toggleFavorite("LIVE", id) }
                     )
                 }
             }
@@ -366,7 +419,7 @@ fun CategoriesScreen(
                             viewModel.ensureCategoriesLoaded(categoryType)
                             pendingDirectOpen = categoryType
                         },
-                        onInfoClick = { showDeviceInfoDialog = true },
+                        onInfoClick = { showSettingsScreen = true },
                         initialFocusRequester = initialFocusRequester
                     )
                 }
@@ -789,7 +842,7 @@ private fun CategoriesHubPanel(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Configurações",
+                                text = stringResource(R.string.nav_settings),
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -805,7 +858,7 @@ private fun CategoriesHubPanel(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     HomeSectionAreaCard(
-                        title = "TV ONLINE",
+                        title = stringResource(R.string.nav_live_tv),
                         subtitle = "",
                         icon = Icons.Default.LiveTv,
                         bgResId = R.drawable.bg_home_live,
@@ -824,7 +877,7 @@ private fun CategoriesHubPanel(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         HomeSectionAreaCard(
-                            title = "FILMES",
+                            title = stringResource(R.string.nav_movies),
                             subtitle = "",
                             icon = Icons.Default.Movie,
                             bgResId = R.drawable.bg_home_movies,
@@ -838,7 +891,7 @@ private fun CategoriesHubPanel(
                         )
 
                         HomeSectionAreaCard(
-                            title = "SÉRIES",
+                            title = stringResource(R.string.nav_series),
                             subtitle = "",
                             icon = Icons.Default.VideoLibrary,
                             bgResId = R.drawable.bg_home_series,
@@ -871,12 +924,12 @@ private fun CategoriesHubPanel(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
-                                contentDescription = "Configurações",
+                                contentDescription = stringResource(R.string.nav_settings),
                                 tint = TvSecondaryBlue,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Configurações",
+                                text = stringResource(R.string.nav_settings),
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
