@@ -1,0 +1,139 @@
+<resources>
+    <string name="app_name">LC Player</string>
+
+    <!-- Navigation & Home -->
+    <string name="nav_live_tv">LIVE TV</string>
+    <string name="nav_movies">MOVIES</string>
+    <string name="nav_series">SERIES</string>
+    <string name="nav_settings">Settings</string>
+    <string name="lbl_continue_watching">Continue Watching</string>
+
+    <!-- Settings - Sections -->
+    <string name="settings_title">SETTINGS</string>
+    <string name="settings_section_sidebar_header">SECTIONS</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_section_playback">Playback</string>
+    <string name="settings_section_account">Account &amp; Lists</string>
+    <string name="settings_section_parental">Parental Controls</string>
+    <string name="settings_section_device">Device</string>
+    <string name="settings_section_about">Maintenance &amp; About</string>
+
+    <!-- Settings - Items & Actions -->
+    <string name="settings_player_title">Player Engine</string>
+    <string name="settings_player_subtitle">ExoPlayer (Native AndroidX Media3 default for LC Player)</string>
+    <string name="settings_time_format_title">Time Format</string>
+    <string name="settings_time_format_subtitle">Clock format display in app header</string>
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_subtitle">Preferred app interface language</string>
+    <string name="settings_switch_list">Switch List</string>
+    <string name="settings_switch_list_subtitle">Switch between active lists linked to your account</string>
+    <string name="settings_refresh_lists">Refresh Lists</string>
+    <string name="settings_refresh_lists_subtitle">Sync lists and permissions with LC Admin server</string>
+    <string name="settings_clear_cache">Clear Temporary Cache</string>
+    <string name="settings_clear_cache_subtitle">Clear category and image memory cache without altering credentials</string>
+    <string name="settings_clear_cache_desc">Category and image memory cache</string>
+    <string name="settings_clear_cache_dialog_title">Clear Temporary Cache?</string>
+    <string name="settings_clear_cache_dialog_msg">This will clear temporary category data from memory. Your Device ID, KEY, and saved lists will NOT be affected.</string>
+    <string name="settings_qr_pairing">Pair via QR Code</string>
+    <string name="settings_qr_pairing_subtitle">Advanced security via single-use temporary token</string>
+    <string name="settings_parental_control">Parental Control (PIN)</string>
+    <string name="settings_parental_control_subtitle">Password protection for adult/restricted categories</string>
+    <string name="settings_coming_soon">Coming soon</string>
+    <string name="settings_about_desc">Professional media player for Live TV, Movies, and Series.</string>
+    <string name="settings_about_app_desc">Professional Media Player</string>
+    <string name="settings_copy">Copy</string>
+    <string name="settings_server">Server</string>
+    <string name="settings_login">Login</string>
+    <string name="settings_account_validity">Account Validity</string>
+    <string name="settings_app_validity">App Validity</string>
+    <string name="settings_unlimited">Unlimited</string>
+    <string name="settings_my_account">My Account</string>
+    <string name="settings_logout_list">Sign out of current list</string>
+    <string name="settings_logout_list_desc">End local session</string>
+    <string name="settings_logout_dialog_title">Sign out of current list?</string>
+    <string name="settings_logout_dialog_msg">Your favorites, progress, and settings will be preserved. You can select a list again at any time.</string>
+    <string name="settings_logout_btn">Sign Out</string>
+    <string name="settings_parental_protection_title">Parental Controls Protection</string>
+    <string name="settings_parental_protection_enabled">Enabled (PIN active for protected content)</string>
+    <string name="settings_parental_protection_disabled">Disabled</string>
+    <string name="settings_parental_enabled_badge">Enabled</string>
+    <string name="settings_parental_disabled_badge">Disabled</string>
+    <string name="settings_parental_change_pin">Change Parental Control PIN</string>
+    <string name="settings_parental_change_pin_desc">Modify the 4-digit numeric PIN</string>
+    <string name="settings_parental_protected_content">Protected content</string>
+    <string name="settings_parental_protected_content_desc">Manage protected categories and channels</string>
+    <string name="settings_live_format_title">Live TV Format</string>
+    <string name="settings_device_info_title">Device Information</string>
+    <string name="settings_device_info_desc">Device ID, KEY and pairing</string>
+    <string name="settings_device_dialog_title">Device</string>
+    <string name="settings_clear_cache_btn">Clear</string>
+    <string name="settings_btn_cancel">Cancel</string>
+    <string name="settings_btn_confirm">Confirm</string>
+
+    <!-- Settings Feedbacks -->
+    <string name="msg_no_other_list">No other list available</string>
+    <string name="msg_no_active_list">No active list available</string>
+    <string name="msg_lists_refreshed">Lists refreshed successfully</string>
+    <string name="msg_cache_cleared">Temporary cache cleared successfully</string>
+    <string name="msg_device_id_copied">Device ID copied to clipboard</string>
+    <string name="msg_key_copied">KEY copied to clipboard</string>
+    <string name="msg_pin_incorrect">Incorrect PIN</string>
+    <string name="msg_pin_mismatch">The entered PINs do not match</string>
+    <string name="msg_pin_format_error">The new PIN must have 4 numeric digits</string>
+    <string name="msg_pin_changed">PIN changed successfully</string>
+    <string name="msg_protected_content">Protected Content</string>
+    <string name="msg_enter_parental_pin">Enter Parental Control PIN to unlock this content:</string>
+    <string name="msg_nothing_to_continue_watching">Nothing to continue watching</string>
+    <string name="btn_unlock">Unlock</string>
+
+    <!-- Common UI, Details & Actions -->
+    <string name="btn_watch">Watch</string>
+    <string name="btn_start_series">Start series</string>
+    <string name="btn_continue">Continue</string>
+    <string name="btn_favorite">Favorite</string>
+    <string name="btn_favorited">Favorited</string>
+    <string name="btn_back">Back</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="btn_retry">Try Again</string>
+    <string name="lbl_synopsis">Synopsis</string>
+    <string name="lbl_seasons">Seasons</string>
+    <string name="lbl_episodes">Episodes</string>
+    <string name="lbl_categories">CATEGORIES</string>
+    <string name="lbl_channels">CHANNELS</string>
+    <string name="lbl_no_synopsis">No description available.</string>
+    <string name="lbl_server">Server</string>
+    <string name="lbl_watch_fullscreen">Watch in Fullscreen (OK)</string>
+    <string name="lbl_guide_channels">Channel Guide</string>
+    <string name="msg_no_channels_found">No channels found</string>
+    <string name="msg_no_movies_found">No movies found</string>
+    <string name="msg_no_series_found">No series found</string>
+    <string name="msg_no_results_found">No results found</string>
+    <string name="msg_no_episodes_found">No episodes found for this season</string>
+    <string name="msg_loading_categories">Loading categories...</string>
+    <string name="msg_loading_channels">Loading channels...</string>
+    <string name="msg_loading_movies">Loading movies...</string>
+    <string name="msg_loading_series">Loading series...</string>
+    <string name="msg_loading_preview">Waiting for focus for preview...</string>
+
+    <!-- Activation & Device -->
+    <string name="activation_title">Device Identification</string>
+    <string name="device_id_label">Device ID</string>
+    <string name="device_key_label">KEY</string>
+    <string name="status_label">Status</string>
+    <string name="activation_notice">Register this device in LC Admin to continue.</string>
+    <string name="activation_instructions">Use the credentials above in the LC Admin panel to link your subscription and grant access to your account content.</string>
+    <string name="status_waiting_activation">Waiting for activation</string>
+    <string name="status_active">Active</string>
+    <string name="status_blocked">Blocked</string>
+    <string name="status_expired">Expired</string>
+    <string name="status_connection_error">Connection error</string>
+    <string name="btn_refresh_status">Check Activation</string>
+    <string name="btn_device_info">System Information</string>
+    <string name="btn_copy_credentials">Copy Credentials</string>
+    <string name="copied_to_clipboard">Device ID and KEY copied to clipboard</string>
+    <string name="checking_status">Checking status...</string>
+    <string name="system_info_title">System Information</string>
+    <string name="btn_close">Close</string>
+    <string name="app_version">Version</string>
+    <string name="app_architecture">Architecture</string>
+</resources>
