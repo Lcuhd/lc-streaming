@@ -5,9 +5,11 @@ import com.example.data.generator.DeviceIdentifierGenerator
 import com.example.data.local.DeviceIdentityStorage
 import com.example.data.local.dao.DeviceInfoDao
 import com.example.data.local.dao.FavoriteDao
+import com.example.data.local.dao.ParentalProtectionDao
 import com.example.data.local.dao.SeriesProgressDao
 import com.example.data.local.entity.DeviceInfoEntity
 import com.example.data.local.entity.FavoriteEntity
+import com.example.data.local.entity.ParentalProtectionEntity
 import com.example.data.local.entity.SeriesProgressEntity
 import com.example.data.remote.LcAdminApiClient
 import com.example.data.remote.LcAdminDeleteResponse
@@ -44,6 +46,7 @@ class DeviceRepository(
     private val deviceInfoDao: DeviceInfoDao,
     private val seriesProgressDao: SeriesProgressDao? = null,
     private val favoriteDao: FavoriteDao? = null,
+    private val parentalProtectionDao: ParentalProtectionDao? = null,
     private val apiClient: LcAdminApiClient = LcAdminApiClient(),
     private val xtreamAuthClient: XtreamAuthClient = XtreamAuthClient(),
     private val xtreamCategoryClient: XtreamCategoryClient = XtreamCategoryClient(),
@@ -359,5 +362,39 @@ class DeviceRepository(
     suspend fun getFavoriteIds(listId: String, contentType: String): Set<String> = withContext(Dispatchers.IO) {
         val dao = favoriteDao ?: return@withContext emptySet()
         dao.getFavorites(listId, contentType).map { it.contentId }.toSet()
+    }
+
+    /**
+     * Adiciona uma proteção manual do Controle dos Pais para uma categoria ou canal.
+     */
+    suspend fun addParentalProtection(listId: String, protectionType: String, contentType: String, targetId: String) = withContext(Dispatchers.IO) {
+        val dao = parentalProtectionDao ?: return@withContext
+        val id = "${listId}_${protectionType}_${contentType}_${targetId}"
+        dao.addProtection(ParentalProtectionEntity(id, listId, protectionType, contentType, targetId))
+    }
+
+    /**
+     * Remove uma proteção manual do Controle dos Pais.
+     */
+    suspend fun removeParentalProtection(listId: String, protectionType: String, contentType: String, targetId: String) = withContext(Dispatchers.IO) {
+        val dao = parentalProtectionDao ?: return@withContext
+        val id = "${listId}_${protectionType}_${contentType}_${targetId}"
+        dao.removeProtectionById(id)
+    }
+
+    /**
+     * Verifica se uma categoria ou canal possui proteção manual ativa.
+     */
+    suspend fun isContentProtected(listId: String, protectionType: String, contentType: String, targetId: String): Boolean = withContext(Dispatchers.IO) {
+        val dao = parentalProtectionDao ?: return@withContext false
+        val id = "${listId}_${protectionType}_${contentType}_${targetId}"
+        dao.isProtected(id)
+    }
+
+    /**
+     * Retorna a lista de proteções manuais ativas para a lista informada.
+     */
+    suspend fun getProtectionsForList(listId: String): List<ParentalProtectionEntity> = withContext(Dispatchers.IO) {
+        parentalProtectionDao?.getProtectionsForList(listId) ?: emptyList()
     }
 }

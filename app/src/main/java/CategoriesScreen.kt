@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -52,7 +53,9 @@ import androidx.compose.runtime.produceState
 import com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID
 import com.example.domain.model.createFavoritesCategory
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,7 +65,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.example.util.AppTimeFormatter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.stringResource
@@ -118,11 +123,40 @@ fun CategoriesScreen(
     var isInnerCategoryExplorerOpen by remember { mutableStateOf(false) }
     var pendingDirectOpen by remember { mutableStateOf<CategoryType?>(null) }
 
+    var showPinPromptDialog by remember { mutableStateOf(false) }
+    var pinPromptInput by remember { mutableStateOf("") }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var pendingTargetKey by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    fun executeWithParentalCheck(
+        protectionType: String,
+        contentType: String,
+        targetId: String,
+        name: String?,
+        action: () -> Unit
+    ) {
+        coroutineScope.launch {
+            val isProtected = viewModel.isContentProtected(protectionType, contentType, targetId, name)
+            if (isProtected) {
+                pendingAction = action
+                pendingTargetKey = Pair(protectionType, targetId)
+                pinPromptInput = ""
+                showPinPromptDialog = true
+            } else {
+                action()
+            }
+        }
+    }
+
     val liveFavoriteIds by produceState<Set<String>>(initialValue = emptySet(), categoriesState?.liveCategories, uiState.toastFeedback) {
         value = viewModel.getFavoriteIds("LIVE")
     }
     val vodFavoriteIds by produceState<Set<String>>(initialValue = emptySet(), categoriesState?.vodCategories, uiState.toastFeedback) {
         value = viewModel.getFavoriteIds("VOD")
+    }
+    val completedMovieIds by produceState<Set<String>>(initialValue = emptySet(), categoriesState?.vodStreamsState, uiState.toastFeedback) {
+        value = viewModel.getCompletedMovieIdsForList()
     }
     val seriesFavoriteIds by produceState<Set<String>>(initialValue = emptySet(), categoriesState?.seriesCategories, uiState.toastFeedback) {
         value = viewModel.getFavoriteIds("SERIES")
@@ -292,7 +326,11 @@ fun CategoriesScreen(
                     CategoryVodMoviesView(
                         category = selectedCat,
                         allCategories = displayVodCategories,
-                        onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
+                        onSelectCategory = { newCat ->
+                            executeWithParentalCheck("CATEGORY", newCat.type.name, newCat.categoryId, newCat.categoryName) {
+                                viewModel.openCategory(newCat)
+                            }
+                        },
                         vodState = categoriesState.vodStreamsState,
                         listTitle = categoriesState.listTitle,
                         onBackClick = {
@@ -301,20 +339,27 @@ fun CategoriesScreen(
                         },
                         onRefreshClick = { viewModel.retryVodStreamsForCurrentCategory() },
                         onMovieClick = { movie ->
-                            viewModel.playVodMovie(movie)
+                            executeWithParentalCheck("CHANNEL", "VOD", movie.streamId, movie.name) {
+                                viewModel.playVodMovie(movie)
+                            }
                         },
                         onGetMovieProgress = { movie ->
                             viewModel.getMovieProgress(movie)
                         },
                         onIsFavorite = { id -> viewModel.isContentFavorite("VOD", id) },
-                        onToggleFavorite = { id -> viewModel.toggleFavorite("VOD", id) }
+                        onToggleFavorite = { id -> viewModel.toggleFavorite("VOD", id) },
+                        completedMovieIds = completedMovieIds
                     )
                 }
                 CategoryType.SERIES -> {
                     CategorySeriesView(
                         category = selectedCat,
                         allCategories = displaySeriesCategories,
-                        onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
+                        onSelectCategory = { newCat ->
+                            executeWithParentalCheck("CATEGORY", newCat.type.name, newCat.categoryId, newCat.categoryName) {
+                                viewModel.openCategory(newCat)
+                            }
+                        },
                         seriesState = categoriesState.seriesState,
                         listTitle = categoriesState.listTitle,
                         onBackClick = {
@@ -323,7 +368,9 @@ fun CategoriesScreen(
                         },
                         onRefreshClick = { viewModel.retrySeriesForCurrentCategory() },
                         onSeriesClick = { series ->
-                            viewModel.openSeriesDetails(series)
+                            executeWithParentalCheck("CATEGORY", "SERIES", series.seriesId, series.name) {
+                                viewModel.openSeriesDetails(series)
+                            }
                         }
                     )
                 }
@@ -334,7 +381,11 @@ fun CategoriesScreen(
                         category = selectedCat,
                         allCategories = displayLiveCategories,
                         activeList = activeList,
-                        onSelectCategory = { newCat -> viewModel.openCategory(newCat) },
+                        onSelectCategory = { newCat ->
+                            executeWithParentalCheck("CATEGORY", newCat.type.name, newCat.categoryId, newCat.categoryName) {
+                                viewModel.openCategory(newCat)
+                            }
+                        },
                         streamsState = categoriesState.liveStreamsState,
                         channelEpgStates = uiState.channelEpgStates,
                         listTitle = categoriesState.listTitle,
@@ -344,7 +395,9 @@ fun CategoriesScreen(
                         },
                         onRefreshClick = { viewModel.retryLiveStreamsForCurrentCategory() },
                         onChannelClick = { channel ->
-                            viewModel.playLiveChannel(channel)
+                            executeWithParentalCheck("CHANNEL", "LIVE", channel.streamId, channel.name) {
+                                viewModel.playLiveChannel(channel)
+                            }
                         },
                         onChannelFocused = { streamId ->
                             viewModel.onChannelFocused(streamId)
@@ -445,6 +498,88 @@ fun CategoriesScreen(
                 onDismiss = { showDeviceInfoDialog = false }
             )
         }
+
+        if (showPinPromptDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showPinPromptDialog = false
+                    pendingAction = null
+                },
+                containerColor = TvSurface,
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = TvSecondaryBlue
+                        )
+                        Text(
+                            text = "Conteúdo Protegido",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Digite o PIN do Controle dos Pais para liberar este conteúdo:",
+                            color = TvTextSecondary,
+                            fontSize = 13.sp
+                        )
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = pinPromptInput,
+                            onValueChange = { if (it.length <= 4) pinPromptInput = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(AppCorners.md)
+                                .background(TvCardBackground)
+                                .border(1.dp, TvSurfaceVariant, AppCorners.md)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val targetKey = pendingTargetKey
+                            val success = if (targetKey != null) {
+                                viewModel.unlockContentWithPin(targetKey.first, "LIVE", targetKey.second, pinPromptInput)
+                            } else {
+                                viewModel.unlockContentWithPin("CATEGORY", "LIVE", "ANY", pinPromptInput)
+                            }
+                            if (success) {
+                                showPinPromptDialog = false
+                                pendingAction?.invoke()
+                                pendingAction = null
+                            }
+                        }
+                    ) {
+                        Text(text = "Desbloquear", color = TvSecondaryBlue, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showPinPromptDialog = false
+                            pendingAction = null
+                        }
+                    ) {
+                        Text(text = stringResource(R.string.btn_back), color = TvTextMuted, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -461,15 +596,15 @@ private fun CompactCategoriesHeaderBar(
     isConnected: Boolean,
     onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
     var currentTimeText by remember { mutableStateOf("") }
     var currentDateText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         while (isActive) {
             val now = Date()
-            currentTimeText = timeFormat.format(now)
+            currentTimeText = AppTimeFormatter.formatCurrentTime(context)
             currentDateText = dateFormat.format(now)
             delay(1000)
         }

@@ -6,16 +6,23 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.local.dao.DeviceInfoDao
 import com.example.data.local.dao.FavoriteDao
+import com.example.data.local.dao.ParentalProtectionDao
 import com.example.data.local.dao.SeriesProgressDao
 import com.example.data.local.entity.DeviceInfoEntity
 import com.example.data.local.entity.FavoriteEntity
+import com.example.data.local.entity.ParentalProtectionEntity
 import com.example.data.local.entity.SeriesProgressEntity
 
-@Database(entities = [DeviceInfoEntity::class, SeriesProgressEntity::class, FavoriteEntity::class], version = 3, exportSchema = false)
+@Database(
+    entities = [DeviceInfoEntity::class, SeriesProgressEntity::class, FavoriteEntity::class, ParentalProtectionEntity::class],
+    version = 4,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deviceInfoDao(): DeviceInfoDao
     abstract fun seriesProgressDao(): SeriesProgressDao
     abstract fun favoriteDao(): FavoriteDao
+    abstract fun parentalProtectionDao(): ParentalProtectionDao
 
     companion object {
         @Volatile

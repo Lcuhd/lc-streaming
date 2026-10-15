@@ -61,7 +61,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.example.util.AppTimeFormatter
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -256,15 +258,15 @@ private fun CompactHomeHeaderBar(
     status: ActivationStatus,
     onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
     var currentTimeText by remember { mutableStateOf("") }
     var currentDateText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         while (isActive) {
             val now = Date()
-            currentTimeText = timeFormat.format(now)
+            currentTimeText = AppTimeFormatter.formatCurrentTime(context)
             currentDateText = dateFormat.format(now)
             delay(1000)
         }

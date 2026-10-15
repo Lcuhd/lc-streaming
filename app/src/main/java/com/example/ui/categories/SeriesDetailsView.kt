@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -140,7 +141,7 @@ fun SeriesDetailsView(
                         // Hero Cinematográfico com Backdrop + Degradê + Metadados + Botões (Iniciar/Continuar + Favoritar)
                         SeriesHeroHeaderCard(
                             seriesId = seriesItem?.seriesId.orEmpty(),
-                            cover = details.cover ?: seriesItem?.backdropPath?.firstOrNull() ?: seriesItem?.cover,
+                            cover = seriesItem?.backdropPath?.firstOrNull() ?: details.cover ?: seriesItem?.cover,
                             title = details.title,
                             rating = details.rating ?: seriesItem?.rating,
                             genre = details.genre ?: seriesItem?.genre,
@@ -268,10 +269,17 @@ private fun SeriesHeroHeaderCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (isWideLayout) 260.dp else 230.dp)
-            .clip(AppCorners.lg)
-            .background(Color(0xFF080D1A))
-            .border(1.dp, TvSurfaceVariant, AppCorners.lg)
+            .height(if (isWideLayout) 360.dp else 230.dp)
+            .then(
+                if (isWideLayout) {
+                    Modifier.clip(AppCorners.lg)
+                } else {
+                    Modifier
+                        .clip(AppCorners.lg)
+                        .background(Color(0xFF080D1A))
+                        .border(1.dp, TvSurfaceVariant, AppCorners.lg)
+                }
+            )
     ) {
         // Backdrop Image
         if (!cover.isNullOrBlank()) {
@@ -290,16 +298,17 @@ private fun SeriesHeroHeaderCard(
             )
         }
 
-        // Overlay de Degradê Cinematográfico
+        // Overlay de Degradê Cinematográfico Duplo
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0x33050810),
-                            Color(0x88050810),
-                            Color(0xFE050810)
+                            Color(0x22050810),
+                            Color(0x77050810),
+                            Color(0xEE050810),
+                            Color(0xFF050810)
                         )
                     )
                 )
@@ -310,8 +319,9 @@ private fun SeriesHeroHeaderCard(
                 .background(
                     Brush.horizontalGradient(
                         colors = listOf(
-                            Color(0xF0050810),
-                            Color(0x77050810),
+                            Color(0xF5050810),
+                            Color(0xAA050810),
+                            Color(0x33050810),
                             Color.Transparent
                         )
                     )
@@ -623,6 +633,27 @@ private fun EpisodeCardItem(
                         tint = TvTextSecondary,
                         modifier = Modifier.size(20.dp)
                     )
+                }
+
+                // Indicador discreto de Episódio Concluído (✓ Verde)
+                if (progress != null && progress.completed) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(3.dp)
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xDD00C853))
+                            .border(1.dp, Color.White, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Assistido",
+                            tint = Color.White,
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
                 }
 
                 if (progress != null && progress.durationMs > 0) {

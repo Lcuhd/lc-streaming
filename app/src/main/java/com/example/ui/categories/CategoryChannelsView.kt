@@ -73,12 +73,18 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.example.data.local.AppSettingsManager
+import androidx.compose.ui.res.stringResource
+import com.example.R
 import com.example.domain.model.DeviceListModel
+import com.example.util.AppTimeFormatter
 import com.example.domain.model.LiveStreamChannel
 import com.example.domain.model.LiveStreamsState
 import com.example.domain.model.ShortEpgState
 import com.example.domain.model.XtreamCategory
+import com.example.ui.components.SearchFilterBar
 import com.example.ui.components.tvFocusable
+import com.example.util.SearchUtils
 import com.example.ui.theme.AppCorners
 import com.example.ui.theme.AppSpacing
 import com.example.ui.theme.StatusActiveText
@@ -197,6 +203,19 @@ private fun WideThreePaneChannelsView(
     }
     var previewStreamUrl by remember { mutableStateOf<String?>(null) }
 
+    var categorySearchQuery by remember { mutableStateOf("") }
+    var channelSearchQuery by remember(category.categoryId) { mutableStateOf("") }
+
+    val filteredCategories = remember(allCategories, categorySearchQuery) {
+        if (categorySearchQuery.isBlank()) allCategories
+        else allCategories.filter { SearchUtils.matchesSearchQuery(it.categoryName, categorySearchQuery) }
+    }
+
+    val filteredChannels = remember(channels, channelSearchQuery) {
+        if (channelSearchQuery.isBlank()) channels
+        else channels.filter { SearchUtils.matchesSearchQuery(it.name, channelSearchQuery) }
+    }
+
     // Debounce de 700ms para iniciar a reprodução do preview de vídeo ao navegar pelo D-pad
     LaunchedEffect(focusedChannel, activeList) {
         previewStreamUrl = null
@@ -237,10 +256,10 @@ private fun WideThreePaneChannelsView(
                 .weight(1f),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)
         ) {
-            // COLUNA 1 — CATEGORIAS (200.dp)
+            // COLUNA 1 — CATEGORIAS (220.dp)
             Box(
                 modifier = Modifier
-                    .width(200.dp)
+                    .width(220.dp)
                     .fillMaxHeight()
                     .clip(AppCorners.lg)
                     .background(TvCardBackground)
@@ -256,11 +275,17 @@ private fun WideThreePaneChannelsView(
                         letterSpacing = 0.8.sp
                     )
 
+                    SearchFilterBar(
+                        query = categorySearchQuery,
+                        onQueryChange = { categorySearchQuery = it },
+                        placeholderText = "Filtrar..."
+                    )
+
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(allCategories, key = { it.categoryId }) { catItem ->
+                        items(filteredCategories, key = { it.categoryId }) { catItem ->
                             val isSelected = catItem.categoryId == category.categoryId
                             Box(
                                 modifier = Modifier
@@ -307,11 +332,17 @@ private fun WideThreePaneChannelsView(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sm)) {
                     Text(
-                        text = "CANAIS (${channels.size})",
+                        text = "CANAIS (${filteredChannels.size})",
                         color = TvTextMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp
+                    )
+
+                    SearchFilterBar(
+                        query = channelSearchQuery,
+                        onQueryChange = { channelSearchQuery = it },
+                        placeholderText = "Filtrar canais..."
                     )
 
                     when {
@@ -320,9 +351,13 @@ private fun WideThreePaneChannelsView(
                                 CircularProgressIndicator(color = TvSecondaryBlue, strokeWidth = 2.dp, modifier = Modifier.size(32.dp))
                             }
                         }
-                        channels.isEmpty() -> {
+                        filteredChannels.isEmpty() -> {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = "Nenhum canal encontrado", color = TvTextMuted, fontSize = 13.sp)
+                                Text(
+                                    text = if (channelSearchQuery.isNotBlank()) stringResource(R.string.msg_no_results_found) else "Nenhum canal encontrado",
+                                    color = TvTextMuted,
+                                    fontSize = 13.sp
+                                )
                             }
                         }
                         else -> {
@@ -330,7 +365,7 @@ private fun WideThreePaneChannelsView(
                                 modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                itemsIndexed(items = channels, key = { index: Int, channel: LiveStreamChannel -> "${channel.streamId}_$index" }) { index: Int, channel: LiveStreamChannel ->
+                                itemsIndexed(items = filteredChannels, key = { index: Int, channel: LiveStreamChannel -> "${channel.streamId}_$index" }) { index: Int, channel: LiveStreamChannel ->
                                     val isFocused = focusedChannel?.streamId == channel.streamId
 
                                     Box(
@@ -574,19 +609,22 @@ private fun WideThreePaneChannelsView(
                             if (epg?.hasEpg == true) {
                                 val curProg = epg.currentProgram
                                 val nextProg = epg.nextProgram
+                                val is12H = AppSettingsManager.getTimeFormat(LocalContext.current) == "12H"
 
                                 if (curProg != null) {
+                                    val timeDisplay = AppTimeFormatter.formatEpgTimeRange(curProg.startTimeFormatted, curProg.endTimeFormatted, is12H).ifBlank { curProg.timeRangeFormatted }
                                     Text(text = "● AO VIVO AGORA", color = StatusActiveText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     Text(text = curProg.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    if (curProg.timeRangeFormatted.isNotBlank()) {
-                                        Text(text = "Horário: ${curProg.timeRangeFormatted}", color = TvTextSecondary, fontSize = 11.sp)
+                                    if (timeDisplay.isNotBlank()) {
+                                        Text(text = "Horário: $timeDisplay", color = TvTextSecondary, fontSize = 11.sp)
                                     }
                                 }
 
                                 if (nextProg != null) {
+                                    val nextTimeDisplay = AppTimeFormatter.formatDisplayTime(nextProg.startTimeFormatted, is12H).ifBlank { nextProg.startTimeFormatted.orEmpty() }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(text = "PRÓXIMO PROGRAMA", color = TvTextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    Text(text = "${nextProg.title}${if (!nextProg.startTimeFormatted.isNullOrBlank()) " (${nextProg.startTimeFormatted})" else ""}", color = TvTextSecondary, fontSize = 12.sp)
+                                    Text(text = "${nextProg.title}${if (nextTimeDisplay.isNotBlank()) " ($nextTimeDisplay)" else ""}", color = TvTextSecondary, fontSize = 12.sp)
                                 }
                             } else {
                                 Text(text = "Guia EPG Indisponível", color = TvTextMuted, fontSize = 12.sp)

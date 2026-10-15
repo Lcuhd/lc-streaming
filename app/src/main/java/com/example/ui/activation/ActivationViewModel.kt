@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
+import com.example.data.local.AppSettingsManager
 import com.example.data.local.entity.SeriesProgressEntity
 import com.example.data.remote.LcAdminDeleteResponse
 import com.example.data.remote.LcAdminListsResponse
@@ -50,13 +51,18 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ActivationViewModel(application: Application) : AndroidViewModel(application) {
 
+    private var userManualLoggedOut = false
+
     private val database = AppDatabase.getDatabase(application)
     private val repository = DeviceRepository(
         context = application,
         deviceInfoDao = database.deviceInfoDao(),
         seriesProgressDao = database.seriesProgressDao(),
-        favoriteDao = database.favoriteDao()
+        favoriteDao = database.favoriteDao(),
+        parentalProtectionDao = database.parentalProtectionDao()
     )
+
+    private val sessionUnlockedTargets = ConcurrentHashMap.newKeySet<String>()
 
     private val xtreamEpgClient = XtreamEpgClient()
     private val epgCache = ConcurrentHashMap<String, Pair<Long, ShortEpgState>>()
@@ -200,7 +206,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     val isDeviceActive = (response.deviceStatus == ActivationStatus.ACTIVE) ||
                             (_uiState.value.status == ActivationStatus.ACTIVE)
 
-                    val shouldNavigate = isDeviceActive &&
+                    val shouldNavigate = isDeviceActive && !userManualLoggedOut &&
                             (navigateToSectionIfActive || currentSec == AppScreenSection.MY_LISTS || currentSec == AppScreenSection.ACTIVATION)
 
                     if (shouldNavigate && activeLists.isNotEmpty()) {
@@ -516,11 +522,30 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
+     * Encerra a sessão da lista atual mantendo os dados e credenciais locais.
+     * Bloqueia o auto-open automático até que o usuário selecione uma lista explicitamente.
+     */
+    fun logoutCurrentList() {
+        Log.i(TAG, "Sair da lista atual acionado pelo usuário (Logout da sessão local).")
+        userManualLoggedOut = true
+        _uiState.update { state ->
+            state.copy(
+                contentCategoriesState = null,
+                selectedListId = null,
+                isAutoSelectedList = false,
+                currentSection = AppScreenSection.MY_LISTS,
+                toastFeedback = "Sessão da lista encerrada"
+            )
+        }
+    }
+
+    /**
      * Abre a tela de exploração de categorias para uma lista ativa autenticada.
      * Requisito 2: Apenas listas ativas com dispositivo ativo podem consultar categorias.
      * Requisitos 11 e 12: Descarta dados de qualquer lista anterior, garantindo isolamento total.
      */
     fun openContentCategories(list: DeviceListModel) {
+        userManualLoggedOut = false
         if (list.status != ListStatus.ACTIVE) {
             val label = list.status.label
             _uiState.update {
@@ -1202,6 +1227,18 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
+     * Retorna o conjunto de IDs de filmes VOD considerados concluídos (assistidos >= 92%) para a lista ativa.
+     */
+    suspend fun getCompletedMovieIdsForList(): Set<String> {
+        val catState = _uiState.value.contentCategoriesState
+        val listId = catState?.listId ?: _uiState.value.selectedListId ?: return emptySet()
+        val vodSeriesId = "VOD_${listId}"
+        val progressList = repository.getSeriesProgress(vodSeriesId)
+        val prefix = "${listId}_VOD_"
+        return progressList.filter { it.completed }.map { it.episodeId.removePrefix(prefix) }.toSet()
+    }
+
+    /**
      * Retorna o progresso de reprodução salvo no Room DB para um filme VOD específico.
      */
     suspend fun getMovieProgress(movie: VodMovie): SeriesProgressEntity? {
@@ -1840,16 +1877,19 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
-        // Construção dinâmica da URL de reprodução Xtream
+        val liveExt = com.example.data.local.AppSettingsManager.getLiveStreamExtension(getApplication())
+        val liveFormat = com.example.data.local.AppSettingsManager.getLiveStreamFormat(getApplication())
+
+        // Construção dinâmica da URL de reprodução Xtream respeitando a preferência do usuário
         val streamUrl = XtreamStreamUrlBuilder.buildLiveStreamUrl(
             rawDns = currentList.dns,
             username = currentList.username,
             password = currentList.password,
             streamId = channel.streamId,
-            containerExtension = "m3u8"
+            containerExtension = liveExt
         )
 
-        Log.i(TAG, "Iniciando reprodução do canal: '${channel.name}' (stream_id=${channel.streamId}) da lista '${currentList.title}'")
+        Log.i(TAG, "LIVE_STREAM_FORMAT=$liveFormat (stream_id=${channel.streamId}, ext=.$liveExt) - '${channel.name}' da lista '${currentList.title}'")
 
         val currentEpg = _uiState.value.channelEpgStates[channel.streamId]
 
@@ -2031,6 +2071,104 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         val catState = _uiState.value.contentCategoriesState
         val listId = catState?.listId ?: _uiState.value.selectedListId ?: return emptySet()
         return repository.getFavoriteIds(listId, contentType)
+    }
+
+    /**
+     * Verifica se uma categoria ou canal necessita de liberação por PIN do Controle dos Pais.
+     */
+    suspend fun isContentProtected(
+        protectionType: String,
+        contentType: String,
+        targetId: String,
+        name: String? = null
+    ): Boolean {
+        val app = getApplication<Application>()
+        if (!AppSettingsManager.isParentalControlEnabled(app)) return false
+
+        val catState = _uiState.value.contentCategoriesState
+        val listId = catState?.listId ?: _uiState.value.selectedListId ?: return false
+        val key = "${listId}_${protectionType}_${contentType}_${targetId}"
+
+        // Se já foi desbloqueado na sessão atual do app, libera o acesso
+        if (sessionUnlockedTargets.contains(key)) return false
+
+        // 1. Checa detecção automática por palavras-chave de conteúdo adulto
+        if (com.example.util.ParentalControlManager.isAdultContentName(name)) return true
+
+        // 2. Checa se o item possui proteção manual salva no Room DB
+        return repository.isContentProtected(listId, protectionType, contentType, targetId)
+    }
+
+    /**
+     * Tenta autenticar o PIN do Controle dos Pais.
+     * Se correto, desbloqueia temporariamente o item para a sessão atual.
+     */
+    fun unlockContentWithPin(
+        protectionType: String,
+        contentType: String,
+        targetId: String,
+        inputPin: String
+    ): Boolean {
+        val app = getApplication<Application>()
+        val currentPin = AppSettingsManager.getParentalPin(app)
+
+        if (inputPin.trim() == currentPin.trim()) {
+            val catState = _uiState.value.contentCategoriesState
+            val listId = catState?.listId ?: _uiState.value.selectedListId ?: ""
+            val key = "${listId}_${protectionType}_${contentType}_${targetId}"
+            sessionUnlockedTargets.add(key)
+            return true
+        } else {
+            _uiState.update { it.copy(toastFeedback = "PIN incorreto") }
+            return false
+        }
+    }
+
+    /**
+     * Alterna o estado de ativado/desativado do Controle dos Pais mediante validação de PIN.
+     */
+    fun toggleParentalControlState(currentPinInput: String): Boolean {
+        val app = getApplication<Application>()
+        val currentPin = AppSettingsManager.getParentalPin(app)
+
+        if (currentPinInput.trim() == currentPin.trim()) {
+            val newState = !AppSettingsManager.isParentalControlEnabled(app)
+            AppSettingsManager.setParentalControlEnabled(app, newState)
+            val msg = if (newState) "Controle dos Pais ativado" else "Controle dos Pais desativado"
+            _uiState.update { it.copy(toastFeedback = msg) }
+            return true
+        } else {
+            _uiState.update { it.copy(toastFeedback = "PIN incorreto") }
+            return false
+        }
+    }
+
+    /**
+     * Altera o PIN do Controle dos Pais.
+     * Exige o PIN atual correto e confirmação de 4 dígitos numéricos para o novo PIN.
+     */
+    fun changeParentalPin(currentPinInput: String, newPin: String, confirmPin: String): Boolean {
+        val app = getApplication<Application>()
+        val currentPin = AppSettingsManager.getParentalPin(app)
+
+        if (currentPinInput.trim() != currentPin.trim()) {
+            _uiState.update { it.copy(toastFeedback = "PIN atual incorreto") }
+            return false
+        }
+
+        if (newPin.trim() != confirmPin.trim()) {
+            _uiState.update { it.copy(toastFeedback = "Os PINs digitados não coincidem") }
+            return false
+        }
+
+        if (newPin.trim().length != 4 || !newPin.trim().all { it.isDigit() }) {
+            _uiState.update { it.copy(toastFeedback = "O novo PIN deve ter 4 dígitos numéricos") }
+            return false
+        }
+
+        AppSettingsManager.setParentalPin(app, newPin.trim())
+        _uiState.update { it.copy(toastFeedback = "PIN alterado com sucesso") }
+        return true
     }
 
     /**

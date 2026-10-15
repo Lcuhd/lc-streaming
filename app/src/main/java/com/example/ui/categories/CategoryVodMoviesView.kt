@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -67,7 +68,9 @@ import com.example.data.local.entity.SeriesProgressEntity
 import com.example.domain.model.VodMovie
 import com.example.domain.model.VodStreamsState
 import com.example.domain.model.XtreamCategory
+import com.example.ui.components.SearchFilterBar
 import com.example.ui.components.tvFocusable
+import com.example.util.SearchUtils
 import com.example.ui.theme.AppCorners
 import com.example.ui.theme.AppSpacing
 import com.example.ui.theme.StatusActiveText
@@ -98,6 +101,7 @@ fun CategoryVodMoviesView(
     onGetMovieProgress: (suspend (VodMovie) -> SeriesProgressEntity?)? = null,
     onIsFavorite: (suspend (String) -> Boolean)? = null,
     onToggleFavorite: (suspend (String) -> Boolean)? = null,
+    completedMovieIds: Set<String> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     val backButtonFocusRequester = remember { FocusRequester() }
@@ -139,6 +143,7 @@ fun CategoryVodMoviesView(
                     allCategories = allCategories,
                     onSelectCategory = onSelectCategory,
                     movies = movies,
+                    completedMovieIds = completedMovieIds,
                     isLoading = isLoading,
                     errorMessage = errorMessage,
                     listTitle = listTitle,
@@ -151,6 +156,7 @@ fun CategoryVodMoviesView(
                 MobileVodMoviesView(
                     categoryName = category.categoryName,
                     movies = movies,
+                    completedMovieIds = completedMovieIds,
                     isLoading = isLoading,
                     errorMessage = errorMessage,
                     listTitle = listTitle,
@@ -478,6 +484,7 @@ private fun WideIntegratedVodMoviesView(
     allCategories: List<XtreamCategory>,
     onSelectCategory: ((XtreamCategory) -> Unit)?,
     movies: List<VodMovie>,
+    completedMovieIds: Set<String> = emptySet(),
     isLoading: Boolean,
     errorMessage: String?,
     listTitle: String,
@@ -486,6 +493,18 @@ private fun WideIntegratedVodMoviesView(
     onMovieClick: (VodMovie) -> Unit,
     backFocusRequester: FocusRequester
 ) {
+    var categorySearchQuery by remember { mutableStateOf("") }
+    var movieSearchQuery by remember(category.categoryId) { mutableStateOf("") }
+
+    val filteredCategories = remember(allCategories, categorySearchQuery) {
+        if (categorySearchQuery.isBlank()) allCategories
+        else allCategories.filter { SearchUtils.matchesSearchQuery(it.categoryName, categorySearchQuery) }
+    }
+
+    val filteredMovies = remember(movies, movieSearchQuery) {
+        if (movieSearchQuery.isBlank()) movies
+        else movies.filter { SearchUtils.matchesSearchQuery(it.name, movieSearchQuery) }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -527,11 +546,17 @@ private fun WideIntegratedVodMoviesView(
                         letterSpacing = 0.8.sp
                     )
 
+                    SearchFilterBar(
+                        query = categorySearchQuery,
+                        onQueryChange = { categorySearchQuery = it },
+                        placeholderText = "Filtrar..."
+                    )
+
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(allCategories, key = { it.categoryId }) { catItem ->
+                        items(filteredCategories, key = { it.categoryId }) { catItem ->
                             val isSelected = catItem.categoryId == category.categoryId
                             Box(
                                 modifier = Modifier
@@ -572,28 +597,40 @@ private fun WideIntegratedVodMoviesView(
                     .fillMaxHeight(),
                 contentAlignment = Alignment.TopCenter
             ) {
-                when {
-                    isLoading && movies.isEmpty() -> {
-                        VodLoadingView(categoryName = category.categoryName)
-                    }
-                    errorMessage != null && movies.isEmpty() -> {
-                        VodErrorView(
-                            errorMessage = errorMessage,
-                            onRetry = onRefreshClick,
-                            onBack = onBackClick
-                        )
-                    }
-                    movies.isEmpty() -> {
-                        VodEmptyView(
-                            categoryName = category.categoryName,
-                            onBack = onBackClick
-                        )
-                    }
-                    else -> {
-                        VodMoviesGridView(
-                            movies = movies,
-                            onMovieClick = onMovieClick
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SearchFilterBar(
+                        query = movieSearchQuery,
+                        onQueryChange = { movieSearchQuery = it },
+                        placeholderText = "Filtrar filmes..."
+                    )
+
+                    when {
+                        isLoading && movies.isEmpty() -> {
+                            VodLoadingView(categoryName = category.categoryName)
+                        }
+                        errorMessage != null && movies.isEmpty() -> {
+                            VodErrorView(
+                                errorMessage = errorMessage,
+                                onRetry = onRefreshClick,
+                                onBack = onBackClick
+                            )
+                        }
+                        filteredMovies.isEmpty() -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = if (movieSearchQuery.isNotBlank()) stringResource(R.string.msg_no_results_found) else "Nenhum filme encontrado",
+                                    color = TvTextMuted,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                        else -> {
+                            VodMoviesGridView(
+                                movies = filteredMovies,
+                                completedMovieIds = completedMovieIds,
+                                onMovieClick = onMovieClick
+                            )
+                        }
                     }
                 }
             }
@@ -753,6 +790,7 @@ private fun VodIntegratedTopBar(
 private fun MobileVodMoviesView(
     categoryName: String,
     movies: List<VodMovie>,
+    completedMovieIds: Set<String> = emptySet(),
     isLoading: Boolean,
     errorMessage: String?,
     listTitle: String,
@@ -804,6 +842,7 @@ private fun MobileVodMoviesView(
                 else -> {
                     VodMoviesGridView(
                         movies = movies,
+                        completedMovieIds = completedMovieIds,
                         onMovieClick = onMovieClick
                     )
                 }
@@ -968,6 +1007,7 @@ private fun VodTopBar(
 @Composable
 private fun VodMoviesGridView(
     movies: List<VodMovie>,
+    completedMovieIds: Set<String> = emptySet(),
     onMovieClick: (VodMovie) -> Unit
 ) {
     LazyVerticalGrid(
@@ -983,6 +1023,7 @@ private fun VodMoviesGridView(
         ) { _, movie ->
             VodMovieCardItem(
                 movie = movie,
+                isCompleted = movie.streamId in completedMovieIds,
                 onClick = { onMovieClick(movie) }
             )
         }
@@ -992,6 +1033,7 @@ private fun VodMoviesGridView(
 @Composable
 private fun VodMovieCardItem(
     movie: VodMovie,
+    isCompleted: Boolean = false,
     onClick: () -> Unit
 ) {
     Column(
@@ -1031,6 +1073,27 @@ private fun VodMovieCardItem(
                     tint = TvTextSecondary,
                     modifier = Modifier.size(36.dp)
                 )
+            }
+
+            // Indicador discreto de Conteúdo Concluído (✓ Verde) no canto superior esquerdo
+            if (isCompleted) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xDD00C853))
+                        .border(1.dp, Color.White, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Assistido",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
 
             if (movie.rating != null && movie.rating != "0" && movie.rating.isNotBlank()) {

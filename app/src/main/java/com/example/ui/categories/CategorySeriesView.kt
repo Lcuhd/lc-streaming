@@ -35,7 +35,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,7 +56,11 @@ import coil.compose.AsyncImage
 import com.example.domain.model.SeriesItem
 import com.example.domain.model.SeriesState
 import com.example.domain.model.XtreamCategory
+import androidx.compose.ui.res.stringResource
+import com.example.R
+import com.example.ui.components.SearchFilterBar
 import com.example.ui.components.tvFocusable
+import com.example.util.SearchUtils
 import com.example.ui.theme.AppCorners
 import com.example.ui.theme.AppSpacing
 import com.example.ui.theme.StatusActiveText
@@ -147,6 +154,18 @@ private fun WideIntegratedSeriesView(
     onSeriesClick: (SeriesItem) -> Unit,
     backFocusRequester: FocusRequester
 ) {
+    var categorySearchQuery by remember { mutableStateOf("") }
+    var seriesSearchQuery by remember(category.categoryId) { mutableStateOf("") }
+
+    val filteredCategories = remember(allCategories, categorySearchQuery) {
+        if (categorySearchQuery.isBlank()) allCategories
+        else allCategories.filter { SearchUtils.matchesSearchQuery(it.categoryName, categorySearchQuery) }
+    }
+
+    val filteredSeries = remember(seriesList, seriesSearchQuery) {
+        if (seriesSearchQuery.isBlank()) seriesList
+        else seriesList.filter { SearchUtils.matchesSearchQuery(it.name, seriesSearchQuery) }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -191,11 +210,17 @@ private fun WideIntegratedSeriesView(
                         letterSpacing = 0.8.sp
                     )
 
+                    SearchFilterBar(
+                        query = categorySearchQuery,
+                        onQueryChange = { categorySearchQuery = it },
+                        placeholderText = "Filtrar..."
+                    )
+
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(allCategories, key = { it.categoryId }) { catItem ->
+                        items(filteredCategories, key = { it.categoryId }) { catItem ->
                             val isSelected = catItem.categoryId == category.categoryId
                             Box(
                                 modifier = Modifier
@@ -237,28 +262,39 @@ private fun WideIntegratedSeriesView(
                     .fillMaxHeight(),
                 contentAlignment = Alignment.TopCenter
             ) {
-                when {
-                    isLoading && seriesList.isEmpty() -> {
-                        SeriesLoadingView(categoryName = category.categoryName)
-                    }
-                    errorMessage != null && seriesList.isEmpty() -> {
-                        SeriesErrorView(
-                            errorMessage = errorMessage,
-                            onRetry = onRefreshClick,
-                            onBack = onBackClick
-                        )
-                    }
-                    seriesList.isEmpty() -> {
-                        SeriesEmptyView(
-                            categoryName = category.categoryName,
-                            onBack = onBackClick
-                        )
-                    }
-                    else -> {
-                        SeriesGridView(
-                            seriesList = seriesList,
-                            onSeriesClick = onSeriesClick
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SearchFilterBar(
+                        query = seriesSearchQuery,
+                        onQueryChange = { seriesSearchQuery = it },
+                        placeholderText = "Filtrar séries..."
+                    )
+
+                    when {
+                        isLoading && seriesList.isEmpty() -> {
+                            SeriesLoadingView(categoryName = category.categoryName)
+                        }
+                        errorMessage != null && seriesList.isEmpty() -> {
+                            SeriesErrorView(
+                                errorMessage = errorMessage,
+                                onRetry = onRefreshClick,
+                                onBack = onBackClick
+                            )
+                        }
+                        filteredSeries.isEmpty() -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = if (seriesSearchQuery.isNotBlank()) stringResource(R.string.msg_no_results_found) else "Nenhuma série encontrada nesta categoria",
+                                    color = TvTextMuted,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                        else -> {
+                            SeriesGridView(
+                                seriesList = filteredSeries,
+                                onSeriesClick = onSeriesClick
+                            )
+                        }
                     }
                 }
             }
