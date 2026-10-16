@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -1484,20 +1486,40 @@ private fun CategoryGridContent(
             }
         }
         else -> {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 200.dp),
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 880.dp),
-                contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .widthIn(max = 880.dp)
             ) {
-                items(categoriesList, key = { it.categoryId }) { category ->
-                    CategoryTileCard(
-                        category = category,
-                        onClick = { onCategoryClick(category) }
-                    )
+                val isWideLayout = this.maxWidth >= 600.dp
+                if (isWideLayout) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 200.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(categoriesList, key = { it.categoryId }) { category ->
+                            CategoryTileCard(
+                                category = category,
+                                onClick = { onCategoryClick(category) }
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = 70.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(categoriesList, key = { it.categoryId }) { category ->
+                            CategoryTileCard(
+                                category = category,
+                                onClick = { onCategoryClick(category) }
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed as lazyGridItemsIndexed
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -158,7 +160,9 @@ fun CategoryChannelsView(
             )
         } else {
             MobileChannelsView(
-                categoryName = category.categoryName,
+                category = category,
+                allCategories = allCategories,
+                onSelectCategory = onSelectCategory,
                 channels = channels,
                 isLoading = isLoading,
                 errorMessage = errorMessage,
@@ -168,6 +172,8 @@ fun CategoryChannelsView(
                 onRefreshClick = onRefreshClick,
                 onChannelClick = onChannelClick,
                 onChannelFocused = onChannelFocused,
+                onIsFavorite = onIsFavorite,
+                onToggleFavorite = onToggleFavorite,
                 backFocusRequester = backButtonFocusRequester
             )
         }
@@ -706,7 +712,9 @@ private fun LiveChannelPreviewPlayer(streamUrl: String) {
  */
 @Composable
 private fun MobileChannelsView(
-    categoryName: String,
+    category: XtreamCategory,
+    allCategories: List<XtreamCategory>,
+    onSelectCategory: ((XtreamCategory) -> Unit)?,
     channels: List<LiveStreamChannel>,
     isLoading: Boolean,
     errorMessage: String?,
@@ -716,25 +724,153 @@ private fun MobileChannelsView(
     onRefreshClick: () -> Unit,
     onChannelClick: (LiveStreamChannel) -> Unit,
     onChannelFocused: ((streamId: String) -> Unit)?,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null,
     backFocusRequester: FocusRequester
 ) {
+    var isSearchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember(category.categoryId) { mutableStateOf("") }
+
+    val filteredChannels = remember(channels, searchQuery) {
+        if (searchQuery.isBlank()) channels
+        else channels.filter { SearchUtils.matchesSearchQuery(it.name, searchQuery) }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 32.dp, top = 14.dp, end = 32.dp, bottom = 16.dp)
+            .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp)
     ) {
-        ChannelsTopBar(
-            categoryName = categoryName,
-            channelCount = channels.size,
-            isLoading = isLoading,
-            listTitle = listTitle,
-            onBackClick = onBackClick,
-            onRefreshClick = onRefreshClick,
-            backFocusRequester = backFocusRequester
-        )
+        // Top Bar com Título "TV ao vivo", Lupa, Atualizar e Voltar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(TvSurface)
+                        .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+                        .clickable { onBackClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = stringResource(R.string.btn_back),
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
 
-        Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = stringResource(R.string.nav_live_tv),
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSearchActive) TvPrimaryBlue else TvSurface)
+                        .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+                        .clickable { isSearchActive = !isSearchActive },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Pesquisar",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(TvSurface)
+                        .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+                        .clickable { onRefreshClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Atualizar",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (isSearchActive) {
+            SearchFilterBar(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                placeholderText = "Pesquisar canais de ${category.categoryName}..."
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        // Faixa Horizontal de Categorias (Chips Scrolláveis)
+        if (allCategories.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(allCategories, key = { it.categoryId }) { catItem ->
+                    val isSelected = catItem.categoryId == category.categoryId
+                    Box(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(AppCorners.pill)
+                            .background(if (isSelected) TvPrimaryBlue else TvSurface)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) Color.White else TvSurfaceVariant,
+                                shape = AppCorners.pill
+                            )
+                            .clickable {
+                                searchQuery = ""
+                                onSelectCategory?.invoke(catItem)
+                            }
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = catItem.categoryName,
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Lista / Grade de Canais da Categoria Selecionada
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -743,7 +879,7 @@ private fun MobileChannelsView(
         ) {
             when {
                 isLoading && channels.isEmpty() -> {
-                    ChannelsLoadingView(categoryName = categoryName)
+                    ChannelsLoadingView(categoryName = category.categoryName)
                 }
                 errorMessage != null && channels.isEmpty() -> {
                     ChannelsErrorView(
@@ -752,15 +888,18 @@ private fun MobileChannelsView(
                         onBack = onBackClick
                     )
                 }
-                channels.isEmpty() -> {
-                    ChannelsEmptyView(
-                        categoryName = categoryName,
-                        onBack = onBackClick
-                    )
+                filteredChannels.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (searchQuery.isNotBlank()) stringResource(R.string.msg_no_results_found) else stringResource(R.string.msg_no_channels_found),
+                            color = TvTextMuted,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
                 else -> {
                     ChannelsGridView(
-                        channels = channels,
+                        channels = filteredChannels,
                         epgStates = epgStates,
                         onChannelClick = onChannelClick,
                         onChannelFocused = onChannelFocused
@@ -1061,14 +1200,12 @@ private fun ChannelsGridView(
     onChannelClick: (LiveStreamChannel) -> Unit,
     onChannelFocused: ((streamId: String) -> Unit)?
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 340.dp),
+    LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 6.dp, bottom = 70.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        lazyGridItemsIndexed(
+        itemsIndexed(
             items = channels,
             key = { index, channel -> "${channel.streamId}_$index" }
         ) { index, channel ->
