@@ -272,13 +272,25 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
-        val currentDeviceId = _uiState.value.deviceId
-        val currentKey = _uiState.value.key
+        var currentDeviceId = _uiState.value.deviceId
+        var currentKey = _uiState.value.key
 
         Log.i(TAG, "[SETTINGS_REFRESH_LISTS_START] Solicitando atualização de listas no LC Admin (/device-lists)...")
         val startTime = SystemClock.elapsedRealtime()
 
         viewModelScope.launch {
+            if (currentDeviceId.isBlank() || currentKey.isBlank()) {
+                val creds = repository.getOrCreateDeviceCredentials()
+                currentDeviceId = creds.deviceId
+                currentKey = creds.key
+            }
+
+            if (currentDeviceId.isBlank() || currentKey.isBlank()) {
+                Log.w(TAG, "[SETTINGS_REFRESH_LISTS_ERROR] Device ID ou Key ausentes")
+                _uiState.update { it.copy(toastFeedback = "Erro: Device ID não configurado") }
+                return@launch
+            }
+
             _uiState.update { it.copy(isLoadingLists = true, listsFeedbackMessage = null) }
 
             val response = repository.fetchDeviceListsOnline(currentDeviceId, currentKey)
@@ -290,14 +302,50 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         TAG,
                         "[SETTINGS_REFRESH_LISTS_RESPONSE] HTTP 200 - ${response.lists.size} listas recebidas em ${durationMs}ms"
                     )
+
+                    val activeListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+                    val activeList = response.lists.firstOrNull { it.id == activeListId }
+                        ?: response.lists.firstOrNull { it.status == ListStatus.ACTIVE }
+                        ?: response.lists.firstOrNull()
+
                     _uiState.update { state ->
+                        val currentCatState = state.contentCategoriesState
+                        val updatedCatState = if (currentCatState != null && activeList != null) {
+                            currentCatState.copy(
+                                listId = activeList.id,
+                                listTitle = activeList.title,
+                                sourceName = activeList.sourceName,
+                                isLiveLoaded = false,
+                                isVodLoaded = false,
+                                isSeriesLoaded = false,
+                                liveCategories = emptyList(),
+                                vodCategories = emptyList(),
+                                seriesCategories = emptyList(),
+                                liveError = null,
+                                vodError = null,
+                                seriesError = null,
+                                selectedCategoryForChannels = null,
+                                liveStreamsState = null,
+                                vodStreamsState = null,
+                                seriesState = null
+                            )
+                        } else currentCatState
+
                         state.copy(
                             isLoadingLists = false,
                             status = response.deviceStatus,
                             lists = response.lists,
+                            selectedListId = activeList?.id ?: state.selectedListId,
+                            contentCategoriesState = updatedCatState,
                             listsFeedbackMessage = response.displayMessage,
-                            toastFeedback = "Listas atualizadas com sucesso"
+                            toastFeedback = "Lista atualizada com sucesso"
                         )
+                    }
+
+                    if (activeList != null && _uiState.value.contentCategoriesState != null) {
+                        fetchCategoriesForList(activeList, CategoryType.LIVE)
+                        fetchCategoriesForList(activeList, CategoryType.VOD)
+                        fetchCategoriesForList(activeList, CategoryType.SERIES)
                     }
                 }
                 is LcAdminListsResponse.Error -> {
@@ -309,7 +357,11 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         state.copy(
                             isLoadingLists = false,
                             listsFeedbackMessage = response.displayMessage,
-                            toastFeedback = response.displayMessage
+                            toastFeedback = if (response.displayMessage.isNotBlank()) {
+                                "Erro ao atualizar: ${response.displayMessage}"
+                            } else {
+                                "Erro de rede ao atualizar lista"
+                            }
                         )
                     }
                 }
@@ -1087,7 +1139,11 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             val streams = current.liveStreamsState ?: LiveStreamsState(category.categoryId, category.categoryName)
             state.copy(
                 contentCategoriesState = current.copy(
-                    liveStreamsState = streams.copy(isLoading = true, errorMessage = null)
+                    liveStreamsState = streams.copy(
+                        channels = emptyList(),
+                        isLoading = true,
+                        errorMessage = null
+                    )
                 )
             )
         }
