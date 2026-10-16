@@ -24,10 +24,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -278,7 +280,7 @@ fun CategoriesScreen(
         return
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(
@@ -291,6 +293,49 @@ fun CategoriesScreen(
                 )
             )
     ) {
+        val isWideLayout = this.maxWidth >= 600.dp
+
+        val currentMobileSection: AppMobileNavSection = remember(
+            showSettingsScreen,
+            categoriesState.seriesDetailsState,
+            categoriesState.selectedCategoryForChannels,
+            isInnerCategoryExplorerOpen,
+            categoriesState.selectedTab,
+            pendingDirectOpen
+        ) {
+            when {
+                showSettingsScreen -> AppMobileNavSection.SETTINGS
+                categoriesState.seriesDetailsState != null -> AppMobileNavSection.SERIES
+                categoriesState.selectedCategoryForChannels != null -> {
+                    when (categoriesState.selectedCategoryForChannels?.type) {
+                        CategoryType.LIVE -> AppMobileNavSection.LIVE
+                        CategoryType.VOD -> AppMobileNavSection.VOD
+                        CategoryType.SERIES -> AppMobileNavSection.SERIES
+                        else -> AppMobileNavSection.HOME
+                    }
+                }
+                isInnerCategoryExplorerOpen -> {
+                    when (categoriesState.selectedTab) {
+                        CategoryType.LIVE -> AppMobileNavSection.LIVE
+                        CategoryType.VOD -> AppMobileNavSection.VOD
+                        CategoryType.SERIES -> AppMobileNavSection.SERIES
+                        else -> AppMobileNavSection.HOME
+                    }
+                }
+                else -> {
+                    if (pendingDirectOpen != null) {
+                        when (pendingDirectOpen) {
+                            CategoryType.LIVE -> AppMobileNavSection.LIVE
+                            CategoryType.VOD -> AppMobileNavSection.VOD
+                            CategoryType.SERIES -> AppMobileNavSection.SERIES
+                            else -> AppMobileNavSection.HOME
+                        }
+                    } else {
+                        AppMobileNavSection.HOME
+                    }
+                }
+            }
+        }
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -580,6 +625,158 @@ fun CategoriesScreen(
                 }
             )
         }
+
+        if (!isWideLayout) {
+            MobileBottomNavigationBar(
+                currentSection = currentMobileSection,
+                onSectionSelected = { section ->
+                    when (section) {
+                        AppMobileNavSection.HOME -> {
+                            showSettingsScreen = false
+                            isInnerCategoryExplorerOpen = false
+                            pendingDirectOpen = null
+                            viewModel.closeSeriesDetails()
+                            viewModel.closeVodCategoryMovies()
+                            viewModel.closeSeriesCategory()
+                            viewModel.closeLiveCategoryChannels()
+                        }
+                        AppMobileNavSection.LIVE -> {
+                            showSettingsScreen = false
+                            isInnerCategoryExplorerOpen = false
+                            viewModel.closeSeriesDetails()
+                            viewModel.closeVodCategoryMovies()
+                            viewModel.closeSeriesCategory()
+                            viewModel.selectCategoryTab(CategoryType.LIVE)
+                            viewModel.ensureCategoriesLoaded(CategoryType.LIVE)
+                            pendingDirectOpen = CategoryType.LIVE
+                        }
+                        AppMobileNavSection.VOD -> {
+                            showSettingsScreen = false
+                            isInnerCategoryExplorerOpen = false
+                            viewModel.closeSeriesDetails()
+                            viewModel.closeSeriesCategory()
+                            viewModel.closeLiveCategoryChannels()
+                            viewModel.selectCategoryTab(CategoryType.VOD)
+                            viewModel.ensureCategoriesLoaded(CategoryType.VOD)
+                            pendingDirectOpen = CategoryType.VOD
+                        }
+                        AppMobileNavSection.SERIES -> {
+                            showSettingsScreen = false
+                            isInnerCategoryExplorerOpen = false
+                            viewModel.closeVodCategoryMovies()
+                            viewModel.closeLiveCategoryChannels()
+                            viewModel.selectCategoryTab(CategoryType.SERIES)
+                            viewModel.ensureCategoriesLoaded(CategoryType.SERIES)
+                            pendingDirectOpen = CategoryType.SERIES
+                        }
+                        AppMobileNavSection.SETTINGS -> {
+                            isInnerCategoryExplorerOpen = false
+                            viewModel.closeSeriesDetails()
+                            viewModel.closeVodCategoryMovies()
+                            viewModel.closeSeriesCategory()
+                            viewModel.closeLiveCategoryChannels()
+                            showSettingsScreen = true
+                        }
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+enum class AppMobileNavSection {
+    HOME,
+    LIVE,
+    VOD,
+    SERIES,
+    SETTINGS
+}
+
+@Composable
+fun MobileBottomNavigationBar(
+    currentSection: AppMobileNavSection,
+    onSectionSelected: (AppMobileNavSection) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(58.dp)
+            .background(Color(0xFF09101D))
+            .border(width = (0.8).dp, color = Color(0xFF1B273A)),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MobileNavItem(
+                label = "Início",
+                icon = Icons.Default.Home,
+                isSelected = currentSection == AppMobileNavSection.HOME,
+                onClick = { onSectionSelected(AppMobileNavSection.HOME) }
+            )
+            MobileNavItem(
+                label = "TV",
+                icon = Icons.Default.LiveTv,
+                isSelected = currentSection == AppMobileNavSection.LIVE,
+                onClick = { onSectionSelected(AppMobileNavSection.LIVE) }
+            )
+            MobileNavItem(
+                label = "Filmes",
+                icon = Icons.Default.Movie,
+                isSelected = currentSection == AppMobileNavSection.VOD,
+                onClick = { onSectionSelected(AppMobileNavSection.VOD) }
+            )
+            MobileNavItem(
+                label = "Séries",
+                icon = Icons.Default.VideoLibrary,
+                isSelected = currentSection == AppMobileNavSection.SERIES,
+                onClick = { onSectionSelected(AppMobileNavSection.SERIES) }
+            )
+            MobileNavItem(
+                label = "Config.",
+                icon = Icons.Default.Settings,
+                isSelected = currentSection == AppMobileNavSection.SETTINGS,
+                onClick = { onSectionSelected(AppMobileNavSection.SETTINGS) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MobileNavItem(
+    label: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isSelected) Color(0xFF0084FF) else Color(0xFF8A99AD),
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            color = if (isSelected) Color(0xFF0084FF) else Color(0xFF8A99AD),
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1
+        )
     }
 }
 

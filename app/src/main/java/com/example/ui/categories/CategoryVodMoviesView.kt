@@ -1013,7 +1013,7 @@ private fun VodMoviesGridView(
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 6.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(top = 6.dp, bottom = 70.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {

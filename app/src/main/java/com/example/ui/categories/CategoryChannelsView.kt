@@ -1064,7 +1064,7 @@ private fun ChannelsGridView(
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 340.dp),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 6.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(top = 6.dp, bottom = 70.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
