@@ -217,6 +217,7 @@ class XtreamVodStreamsClient(
     }
 
     private fun movieMatchesCategory(movie: VodMovie, targetCategoryId: String): Boolean {
+        if (targetCategoryId.isBlank()) return true
         if (movie.categoryId.isBlank()) return false
         return movie.categoryId.trim() == targetCategoryId.trim()
     }

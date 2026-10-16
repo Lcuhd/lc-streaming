@@ -226,6 +226,7 @@ class XtreamSeriesClient(
     }
 
     private fun seriesMatchesCategory(series: SeriesItem, targetCategoryId: String): Boolean {
+        if (targetCategoryId.isBlank()) return true
         if (series.categoryId.isBlank()) return false
         return series.categoryId.trim() == targetCategoryId.trim()
     }

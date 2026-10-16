@@ -888,8 +888,49 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
             viewModelScope.launch {
                 val favoriteIds = repository.getFavoriteIds(currentList.id, "LIVE")
-                val availableChannels = catState.liveStreamsState?.channels ?: emptyList()
-                val favoriteChannels = availableChannels.filter { it.streamId in favoriteIds }
+                if (favoriteIds.isEmpty()) {
+                    _uiState.update { state ->
+                        val current = state.contentCategoriesState ?: return@update state
+                        state.copy(
+                            contentCategoriesState = current.copy(
+                                selectedCategoryForChannels = category,
+                                liveStreamsState = LiveStreamsState(
+                                    categoryId = category.categoryId,
+                                    categoryName = category.categoryName,
+                                    channels = emptyList(),
+                                    isLoading = false,
+                                    errorMessage = "Nenhum canal favoritado nesta lista"
+                                )
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
+                _uiState.update { state ->
+                    val current = state.contentCategoriesState ?: return@update state
+                    state.copy(
+                        contentCategoriesState = current.copy(
+                            selectedCategoryForChannels = category,
+                            liveStreamsState = LiveStreamsState(
+                                categoryId = category.categoryId,
+                                categoryName = category.categoryName,
+                                channels = emptyList(),
+                                isLoading = true,
+                                errorMessage = null
+                            )
+                        )
+                    )
+                }
+
+                val allResult = repository.fetchLiveStreamsForCategoryOnline(
+                    currentList,
+                    XtreamCategory(categoryId = "", categoryName = "Todas", type = CategoryType.LIVE)
+                )
+
+                val favoriteChannels = if (allResult is LiveStreamsLoadResult.Success) {
+                    allResult.channels.filter { it.streamId in favoriteIds }
+                } else emptyList()
 
                 _uiState.update { state ->
                     val current = state.contentCategoriesState ?: return@update state
@@ -1081,8 +1122,49 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
             viewModelScope.launch {
                 val favoriteIds = repository.getFavoriteIds(currentList.id, "VOD")
-                val availableMovies = catState.vodStreamsState?.movies ?: emptyList()
-                val favoriteMovies = availableMovies.filter { it.streamId in favoriteIds }
+                if (favoriteIds.isEmpty()) {
+                    _uiState.update { state ->
+                        val current = state.contentCategoriesState ?: return@update state
+                        state.copy(
+                            contentCategoriesState = current.copy(
+                                selectedCategoryForChannels = category,
+                                vodStreamsState = VodStreamsState(
+                                    categoryId = category.categoryId,
+                                    categoryName = category.categoryName,
+                                    movies = emptyList(),
+                                    isLoading = false,
+                                    errorMessage = "Nenhum filme favoritado nesta lista"
+                                )
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
+                _uiState.update { state ->
+                    val current = state.contentCategoriesState ?: return@update state
+                    state.copy(
+                        contentCategoriesState = current.copy(
+                            selectedCategoryForChannels = category,
+                            vodStreamsState = VodStreamsState(
+                                categoryId = category.categoryId,
+                                categoryName = category.categoryName,
+                                movies = emptyList(),
+                                isLoading = true,
+                                errorMessage = null
+                            )
+                        )
+                    )
+                }
+
+                val allResult = repository.fetchVodStreamsForCategoryOnline(
+                    currentList,
+                    XtreamCategory(categoryId = "", categoryName = "Todos", type = CategoryType.VOD)
+                )
+
+                val favoriteMovies = if (allResult is VodStreamsLoadResult.Success) {
+                    allResult.movies.filter { it.streamId in favoriteIds }
+                } else emptyList()
 
                 _uiState.update { state ->
                     val current = state.contentCategoriesState ?: return@update state
@@ -1329,8 +1411,49 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
             viewModelScope.launch {
                 val favoriteIds = repository.getFavoriteIds(currentList.id, "SERIES")
-                val availableSeries = catState.seriesState?.seriesList ?: emptyList()
-                val favoriteSeries = availableSeries.filter { it.seriesId in favoriteIds }
+                if (favoriteIds.isEmpty()) {
+                    _uiState.update { state ->
+                        val current = state.contentCategoriesState ?: return@update state
+                        state.copy(
+                            contentCategoriesState = current.copy(
+                                selectedCategoryForChannels = category,
+                                seriesState = SeriesState(
+                                    categoryId = category.categoryId,
+                                    categoryName = category.categoryName,
+                                    seriesList = emptyList(),
+                                    isLoading = false,
+                                    errorMessage = "Nenhuma série favoritada nesta lista"
+                                )
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
+                _uiState.update { state ->
+                    val current = state.contentCategoriesState ?: return@update state
+                    state.copy(
+                        contentCategoriesState = current.copy(
+                            selectedCategoryForChannels = category,
+                            seriesState = SeriesState(
+                                categoryId = category.categoryId,
+                                categoryName = category.categoryName,
+                                seriesList = emptyList(),
+                                isLoading = true,
+                                errorMessage = null
+                            )
+                        )
+                    )
+                }
+
+                val allResult = repository.fetchSeriesForCategoryOnline(
+                    currentList,
+                    XtreamCategory(categoryId = "", categoryName = "Todas", type = CategoryType.SERIES)
+                )
+
+                val favoriteSeries = if (allResult is SeriesLoadResult.Success) {
+                    allResult.series.filter { it.seriesId in favoriteIds }
+                } else emptyList()
 
                 _uiState.update { state ->
                     val current = state.contentCategoriesState ?: return@update state
@@ -2061,6 +2184,64 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         val result = repository.toggleFavorite(listId, contentType, contentId)
         val msg = if (result) "Adicionado aos favoritos" else "Removido dos favoritos"
         _uiState.update { it.copy(toastFeedback = msg) }
+
+        val activeCat = catState?.selectedCategoryForChannels
+        if (activeCat != null && activeCat.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
+            val currentList = _uiState.value.lists.firstOrNull { it.id == listId }
+            if (currentList != null) {
+                when (contentType) {
+                    "LIVE" -> {
+                        val favoriteIds = repository.getFavoriteIds(currentList.id, "LIVE")
+                        val currentChannels = catState.liveStreamsState?.channels ?: emptyList()
+                        val updated = currentChannels.filter { it.streamId in favoriteIds }
+                        _uiState.update { state ->
+                            val cur = state.contentCategoriesState ?: return@update state
+                            state.copy(
+                                contentCategoriesState = cur.copy(
+                                    liveStreamsState = cur.liveStreamsState?.copy(
+                                        channels = updated,
+                                        errorMessage = if (updated.isEmpty()) "Nenhum canal favoritado nesta lista" else null
+                                    )
+                                )
+                            )
+                        }
+                    }
+                    "VOD" -> {
+                        val favoriteIds = repository.getFavoriteIds(currentList.id, "VOD")
+                        val currentMovies = catState.vodStreamsState?.movies ?: emptyList()
+                        val updated = currentMovies.filter { it.streamId in favoriteIds }
+                        _uiState.update { state ->
+                            val cur = state.contentCategoriesState ?: return@update state
+                            state.copy(
+                                contentCategoriesState = cur.copy(
+                                    vodStreamsState = cur.vodStreamsState?.copy(
+                                        movies = updated,
+                                        errorMessage = if (updated.isEmpty()) "Nenhum filme favoritado nesta lista" else null
+                                    )
+                                )
+                            )
+                        }
+                    }
+                    "SERIES" -> {
+                        val favoriteIds = repository.getFavoriteIds(currentList.id, "SERIES")
+                        val currentSeries = catState.seriesState?.seriesList ?: emptyList()
+                        val updated = currentSeries.filter { it.seriesId in favoriteIds }
+                        _uiState.update { state ->
+                            val cur = state.contentCategoriesState ?: return@update state
+                            state.copy(
+                                contentCategoriesState = cur.copy(
+                                    seriesState = cur.seriesState?.copy(
+                                        seriesList = updated,
+                                        errorMessage = if (updated.isEmpty()) "Nenhuma série favoritada nesta lista" else null
+                                    )
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         return result
     }
 

@@ -223,6 +223,7 @@ class XtreamLiveStreamsClient(
     }
 
     private fun streamMatchesCategory(channel: LiveStreamChannel, targetCategoryId: String): Boolean {
+        if (targetCategoryId.isBlank()) return true
         if (channel.categoryId.isBlank()) return false
         return channel.categoryId.trim() == targetCategoryId.trim()
     }
