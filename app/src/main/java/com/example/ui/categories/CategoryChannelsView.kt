@@ -902,7 +902,9 @@ private fun MobileChannelsView(
                         channels = filteredChannels,
                         epgStates = epgStates,
                         onChannelClick = onChannelClick,
-                        onChannelFocused = onChannelFocused
+                        onChannelFocused = onChannelFocused,
+                        onIsFavorite = onIsFavorite,
+                        onToggleFavorite = onToggleFavorite
                     )
                 }
             }
@@ -1198,7 +1200,9 @@ private fun ChannelsGridView(
     channels: List<LiveStreamChannel>,
     epgStates: Map<String, ShortEpgState>,
     onChannelClick: (LiveStreamChannel) -> Unit,
-    onChannelFocused: ((streamId: String) -> Unit)?
+    onChannelFocused: ((streamId: String) -> Unit)?,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1214,7 +1218,9 @@ private fun ChannelsGridView(
                 index = index,
                 epgState = epgStates[channel.streamId],
                 onClick = { onChannelClick(channel) },
-                onFocus = { onChannelFocused?.invoke(channel.streamId) }
+                onFocus = { onChannelFocused?.invoke(channel.streamId) },
+                onIsFavorite = onIsFavorite,
+                onToggleFavorite = onToggleFavorite
             )
         }
     }
@@ -1226,8 +1232,21 @@ private fun ChannelCardItem(
     index: Int,
     epgState: ShortEpgState?,
     onClick: () -> Unit,
-    onFocus: () -> Unit
+    onFocus: () -> Unit,
+    onIsFavorite: (suspend (String) -> Boolean)? = null,
+    onToggleFavorite: (suspend (String) -> Boolean)? = null
 ) {
+    var isFavorite by remember(channel.streamId) { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(channel.streamId) {
+        if (onIsFavorite != null) {
+            try {
+                isFavorite = onIsFavorite(channel.streamId)
+            } catch (_: Exception) {}
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1383,6 +1402,30 @@ private fun ChannelCardItem(
                             fontSize = 11.sp
                         )
                     }
+                }
+            }
+
+            if (onToggleFavorite != null) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isFavorite) Color(0x33FF3D71) else Color(0x11FFFFFF))
+                        .clickable {
+                            coroutineScope.launch {
+                                try {
+                                    isFavorite = onToggleFavorite(channel.streamId)
+                                } catch (_: Exception) {}
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favoritar canal",
+                        tint = if (isFavorite) Color(0xFFFF3D71) else TvTextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }

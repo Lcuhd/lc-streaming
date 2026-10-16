@@ -974,6 +974,10 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
      * Consulta os canais da categoria no servidor Xtream.
      */
     private fun fetchLiveStreamsForCategory(list: DeviceListModel, category: XtreamCategory) {
+        if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
+            openLiveCategoryChannels(category)
+            return
+        }
         viewModelScope.launch {
             Log.d(
                 TAG,
@@ -1205,6 +1209,10 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun fetchVodStreamsForCategory(list: DeviceListModel, category: XtreamCategory) {
+        if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
+            openVodCategoryMovies(category)
+            return
+        }
         viewModelScope.launch {
             Log.d(
                 TAG,
@@ -1494,6 +1502,10 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun fetchSeriesForCategory(list: DeviceListModel, category: XtreamCategory) {
+        if (category.categoryId == com.example.domain.model.VIRTUAL_FAVORITES_CATEGORY_ID) {
+            openSeriesCategory(category)
+            return
+        }
         viewModelScope.launch {
             Log.d(
                 TAG,
