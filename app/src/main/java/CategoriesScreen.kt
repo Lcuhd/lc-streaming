@@ -646,37 +646,50 @@ fun CategoriesScreen(
                             showSettingsScreen = false
                             isInnerCategoryExplorerOpen = false
                             viewModel.closeSeriesDetails()
-                            viewModel.closeVodCategoryMovies()
-                            viewModel.closeSeriesCategory()
                             viewModel.selectCategoryTab(CategoryType.LIVE)
                             viewModel.ensureCategoriesLoaded(CategoryType.LIVE)
-                            pendingDirectOpen = CategoryType.LIVE
+                            if (categoriesState.selectedCategoryForChannels?.type != CategoryType.LIVE) {
+                                val firstLive = displayLiveCategories.firstOrNull()
+                                if (firstLive != null) {
+                                    viewModel.openCategory(firstLive)
+                                } else {
+                                    pendingDirectOpen = CategoryType.LIVE
+                                }
+                            }
                         }
                         AppMobileNavSection.VOD -> {
                             showSettingsScreen = false
                             isInnerCategoryExplorerOpen = false
                             viewModel.closeSeriesDetails()
-                            viewModel.closeSeriesCategory()
-                            viewModel.closeLiveCategoryChannels()
                             viewModel.selectCategoryTab(CategoryType.VOD)
                             viewModel.ensureCategoriesLoaded(CategoryType.VOD)
-                            pendingDirectOpen = CategoryType.VOD
+                            if (categoriesState.selectedCategoryForChannels?.type != CategoryType.VOD) {
+                                val firstVod = displayVodCategories.firstOrNull()
+                                if (firstVod != null) {
+                                    viewModel.openCategory(firstVod)
+                                } else {
+                                    pendingDirectOpen = CategoryType.VOD
+                                }
+                            }
                         }
                         AppMobileNavSection.SERIES -> {
                             showSettingsScreen = false
                             isInnerCategoryExplorerOpen = false
-                            viewModel.closeVodCategoryMovies()
-                            viewModel.closeLiveCategoryChannels()
+                            viewModel.closeSeriesDetails()
                             viewModel.selectCategoryTab(CategoryType.SERIES)
                             viewModel.ensureCategoriesLoaded(CategoryType.SERIES)
-                            pendingDirectOpen = CategoryType.SERIES
+                            if (categoriesState.selectedCategoryForChannels?.type != CategoryType.SERIES) {
+                                val firstSeries = displaySeriesCategories.firstOrNull()
+                                if (firstSeries != null) {
+                                    viewModel.openCategory(firstSeries)
+                                } else {
+                                    pendingDirectOpen = CategoryType.SERIES
+                                }
+                            }
                         }
                         AppMobileNavSection.SETTINGS -> {
                             isInnerCategoryExplorerOpen = false
                             viewModel.closeSeriesDetails()
-                            viewModel.closeVodCategoryMovies()
-                            viewModel.closeSeriesCategory()
-                            viewModel.closeLiveCategoryChannels()
                             showSettingsScreen = true
                         }
                     }

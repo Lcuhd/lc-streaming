@@ -22,7 +22,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -118,7 +120,13 @@ fun SeriesDetailsView(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = AppSpacing.xl, top = AppSpacing.md, end = AppSpacing.xl, bottom = AppSpacing.md)
+                .then(if (!isWideLayout) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(
+                    start = if (isWideLayout) AppSpacing.xl else 16.dp,
+                    top = AppSpacing.md,
+                    end = if (isWideLayout) AppSpacing.xl else 16.dp,
+                    bottom = if (isWideLayout) AppSpacing.md else 70.dp
+                )
         ) {
             when {
                 isLoading && details == null -> {
@@ -208,22 +216,37 @@ fun SeriesDetailsView(
                                 )
                             }
                         } else {
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 280.dp),
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(bottom = 24.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                itemsIndexed(
-                                    items = episodes,
-                                    key = { index, ep -> "${ep.id}_$index" }
-                                ) { _, episode ->
-                                    EpisodeCardItem(
-                                        episode = episode,
-                                        progress = progressMap[episode.id],
-                                        onClick = { onEpisodeClick(episode) }
-                                    )
+                            if (isWideLayout) {
+                                LazyVerticalGrid(
+                                    columns = GridCells.Adaptive(minSize = 280.dp),
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(bottom = 24.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    itemsIndexed(
+                                        items = episodes,
+                                        key = { index, ep -> "${ep.id}_$index" }
+                                    ) { _, episode ->
+                                        EpisodeCardItem(
+                                            episode = episode,
+                                            progress = progressMap[episode.id],
+                                            onClick = { onEpisodeClick(episode) }
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    episodes.forEachIndexed { index, episode ->
+                                        EpisodeCardItem(
+                                            episode = episode,
+                                            progress = progressMap[episode.id],
+                                            onClick = { onEpisodeClick(episode) }
+                                        )
+                                    }
                                 }
                             }
                         }
