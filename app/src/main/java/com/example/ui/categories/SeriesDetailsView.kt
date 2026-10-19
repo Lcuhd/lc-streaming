@@ -509,22 +509,25 @@ private fun SeriesPrimaryActionButton(
 ) {
     val (label, icon, sublabel) = when (buttonState) {
         is SeriesButtonState.StartSeries -> Triple(
-            "Iniciar série",
+            "Assistir",
             Icons.Default.PlayArrow,
-            "Temp. ${buttonState.firstEpisode.seasonNum} • Ep. ${buttonState.firstEpisode.episodeNum}"
+            "T${buttonState.firstEpisode.seasonNum} • E${buttonState.firstEpisode.episodeNum}"
         )
+
         is SeriesButtonState.ContinueSeries -> Triple(
-            "Continuar • Temp. ${buttonState.targetSeasonNum} - Ep. ${buttonState.targetEpisodeNum}",
+            "Continuar",
             Icons.Default.PlayArrow,
-            buttonState.targetEpisode.title
+            "T${buttonState.targetSeasonNum} • E${buttonState.targetEpisodeNum}"
         )
+
         is SeriesButtonState.RestartSeries -> Triple(
             "Assistir novamente",
             Icons.Default.Refresh,
-            "Recomeçar da 1ª temporada"
+            "Recomeçar"
         )
+
         is SeriesButtonState.NoEpisodesAvailable -> Triple(
-            "Sem episódios disponíveis",
+            "Indisponível",
             Icons.Default.PlayArrow,
             ""
         )

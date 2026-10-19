@@ -136,6 +136,7 @@ fun LivePlayerScreen(
     onNextChannel: () -> Unit = {},
     onSelectChannel: (LiveStreamChannel) -> Unit = {},
     onSaveProgress: ((positionMs: Long, durationMs: Long, completed: Boolean) -> Unit)? = null,
+    onEpisodeEnded: (() -> Unit)? = null,
     onPlayerStateChange: (isPlaying: Boolean, isBuffering: Boolean, error: String?) -> Unit,
     onRetryFallbackFormat: (extension: String) -> Unit,
     modifier: Modifier = Modifier
@@ -217,7 +218,12 @@ fun LivePlayerScreen(
                         onPlayerStateChange(false, false, null)
                         if (playerState.seriesId != null) {
                             val dur = exoPlayer.duration
-                            onSaveProgress?.invoke(if (dur > 0) dur else 0L, if (dur > 0) dur else 0L, true)
+                            onSaveProgress?.invoke(
+                                if (dur > 0) dur else 0L,
+                                if (dur > 0) dur else 0L,
+                                true
+                            )
+                            onEpisodeEnded?.invoke()
                         }
                     }
                     Player.STATE_IDLE -> {}

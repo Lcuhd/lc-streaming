@@ -75,6 +75,9 @@ class MainActivity : ComponentActivity() {
                                     onSaveProgress = { pos, dur, completed ->
                                         activationViewModel.savePlayerEpisodeProgress(pos, dur, completed)
                                     },
+                                    onEpisodeEnded = {
+                                        activationViewModel.playNextSeriesEpisodeAutomatically()
+                                    },
                                     onPlayerStateChange = { isPlaying, isBuffering, error ->
                                         activationViewModel.updatePlayerState(isPlaying, isBuffering, error)
                                     },

@@ -34,6 +34,7 @@ import com.example.domain.model.SeriesDetailsState
 import com.example.domain.model.SeriesItem
 import com.example.domain.model.SeriesLoadResult
 import com.example.domain.model.SeriesState
+import com.example.domain.model.getNextEpisode
 import com.example.domain.model.VodMovie
 import com.example.domain.model.VodStreamsLoadResult
 import com.example.domain.model.VodStreamsState
@@ -1850,6 +1851,47 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     episodeId = episode.id
                 )
             )
+        }
+    }
+
+    fun playNextSeriesEpisodeAutomatically() {
+        val app = getApplication<Application>()
+
+        if (!AppSettingsManager.isAutoNextEpisodeEnabled(app)) {
+            Log.d(TAG, "Próximo episódio automático está desativado")
+            return
+        }
+
+        val playerState = _uiState.value.livePlayerState ?: return
+        val seriesId = playerState.seriesId ?: return
+        val seasonNum = playerState.seasonNum ?: return
+        val episodeNum = playerState.episodeNum ?: return
+
+        val details = _uiState.value
+            .contentCategoriesState
+            ?.seriesDetailsState
+            ?.details
+            ?: return
+
+        if (details.seriesId != seriesId) {
+            Log.w(TAG, "Não foi possível avançar: detalhes da série ativa não correspondem ao player")
+            return
+        }
+
+        val nextEpisode = getNextEpisode(
+            details = details,
+            currentSeasonNum = seasonNum,
+            currentEpisodeNum = episodeNum
+        )
+
+        if (nextEpisode != null) {
+            Log.i(
+                TAG,
+                "Avançando automaticamente: S${nextEpisode.seasonNum}E${nextEpisode.episodeNum}"
+            )
+            playSeriesEpisode(nextEpisode, startPositionMs = 0L)
+        } else {
+            Log.i(TAG, "Não há próximo episódio disponível")
         }
     }
 
