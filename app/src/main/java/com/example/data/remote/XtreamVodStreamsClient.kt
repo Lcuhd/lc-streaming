@@ -2,6 +2,8 @@ package com.example.data.remote
 
 import android.os.SystemClock
 import android.util.Log
+import com.example.domain.model.VodDetails
+import com.example.domain.model.VodDetailsLoadResult
 import com.example.domain.model.VodMovie
 import com.example.domain.model.VodStreamsLoadResult
 import okhttp3.OkHttpClient
@@ -63,6 +65,22 @@ class XtreamVodStreamsClient(
             } else {
                 base
             }
+        }
+
+        /**
+         * Constrói a URL para consulta dos detalhes completos de um filme (get_vod_info).
+         */
+        fun buildVodInfoUrl(
+            dns: String,
+            username: String,
+            password: String,
+            vodId: String
+        ): String {
+            val cleanDns = dns.trim().trimEnd('/')
+            val encodedUser = URLEncoder.encode(username.trim(), "UTF-8")
+            val encodedPass = URLEncoder.encode(password.trim(), "UTF-8")
+            val encodedVod = URLEncoder.encode(vodId.trim(), "UTF-8")
+            return "$cleanDns/player_api.php?username=$encodedUser&password=$encodedPass&action=get_vod_info&vod_id=$encodedVod"
         }
 
         private fun extractSafeHost(dns: String): String {
@@ -367,5 +385,163 @@ class XtreamVodStreamsClient(
         data class Success(val movies: List<VodMovie>) : VodFetchResponse()
         data class AuthError(val message: String) : VodFetchResponse()
         data class NetworkError(val message: String) : VodFetchResponse()
+    }
+
+    /**
+     * Consulta os detalhes completos de um filme VOD (action=get_vod_info).
+     */
+    fun fetchVodDetails(
+        dns: String,
+        username: String,
+        password: String,
+        vodId: String
+    ): VodDetailsLoadResult {
+        if (dns.isBlank() || username.isBlank() || password.isBlank() || vodId.isBlank()) {
+            return VodDetailsLoadResult.Error("Credenciais ou identificador do filme inválidos")
+        }
+
+        val safeHost = extractSafeHost(dns)
+        val startTime = SystemClock.elapsedRealtime()
+
+        Log.i(TAG, "Iniciando consulta de detalhes do filme vod_id='$vodId', host=$safeHost")
+
+        val url = try {
+            buildVodInfoUrl(dns, username, password, vodId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Falha ao construir URL para get_vod_info vod_id=$vodId", e)
+            return VodDetailsLoadResult.Error("Não foi possível construir requisição para o servidor")
+        }
+
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "LCPlayer/1.0 (Android TV)")
+            .get()
+            .build()
+
+        return try {
+            client.newCall(request).execute().use { response ->
+                val durationMs = SystemClock.elapsedRealtime() - startTime
+                val code = response.code
+                val rawBody = response.body?.string().orEmpty().trim()
+
+                Log.i(
+                    TAG,
+                    "Resposta get_vod_info obtida em ${durationMs}ms: HTTP $code, tamanho=${rawBody.length} bytes"
+                )
+
+                if (code == 401 || code == 403) {
+                    return VodDetailsLoadResult.Error("Acesso não autorizado pelo servidor ($code)")
+                }
+
+                if (code in 500..599) {
+                    return VodDetailsLoadResult.Error("O servidor de conteúdo retornou erro interno ($code)")
+                }
+
+                if (code != 200) {
+                    return VodDetailsLoadResult.Error("Erro ao comunicar com o servidor ($code)")
+                }
+
+                if (rawBody.isBlank()) {
+                    return VodDetailsLoadResult.Error("Servidor retornou resposta vazia")
+                }
+
+                parseVodDetailsJson(rawBody, vodId)
+            }
+        } catch (e: SocketTimeoutException) {
+            Log.e(TAG, "Timeout ao consultar detalhes do filme (host=$safeHost)", e)
+            VodDetailsLoadResult.Error("O servidor demorou para responder")
+        } catch (e: UnknownHostException) {
+            Log.e(TAG, "DNS / sem conexão ao consultar detalhes do filme (host=$safeHost)", e)
+            VodDetailsLoadResult.Error("Sem conexão com a internet")
+        } catch (e: ConnectException) {
+            Log.e(TAG, "Conexão recusada ao consultar detalhes do filme (host=$safeHost)", e)
+            VodDetailsLoadResult.Error("Não foi possível conectar ao servidor de conteúdo")
+        } catch (e: IOException) {
+            Log.e(TAG, "Erro I/O ao consultar detalhes do filme (host=$safeHost)", e)
+            VodDetailsLoadResult.Error("Falha de rede ao carregar detalhes do filme")
+        } catch (e: Exception) {
+            Log.e(TAG, "Exceção inesperada ao consultar detalhes do filme", e)
+            VodDetailsLoadResult.Error("Erro inesperado ao consultar detalhes do filme")
+        }
+    }
+
+    private fun parseVodDetailsJson(
+        rawBody: String,
+        vodId: String
+    ): VodDetailsLoadResult {
+        return try {
+            val rootObj = JSONObject(rawBody)
+            val infoObj = rootObj.optJSONObject("info") ?: rootObj.optJSONObject("movie_data") ?: rootObj
+
+            fun getSafeString(vararg keys: String): String? {
+                for (key in keys) {
+                    if (infoObj.has(key) && !infoObj.isNull(key)) {
+                        val v = infoObj.optString(key).trim()
+                        if (v.isNotBlank() && v != "null") {
+                            return v
+                        }
+                    }
+                    if (rootObj.has(key) && !rootObj.isNull(key)) {
+                        val v = rootObj.optString(key).trim()
+                        if (v.isNotBlank() && v != "null") {
+                            return v
+                        }
+                    }
+                }
+                return null
+            }
+
+            val title = getSafeString("name", "title") ?: "Filme $vodId"
+            val movieImage = getSafeString("movie_image", "stream_icon", "cover")
+            val plot = getSafeString("plot", "description")
+            val cast = getSafeString("cast", "actors")
+            val director = getSafeString("director")
+            val genre = getSafeString("genre")
+            val releaseDate = getSafeString("releaseDate", "release_date", "releasedate")
+            val duration = getSafeString("duration", "duration_secs")
+            val rating = getSafeString("rating")
+            val ageRating = getSafeString("mpaa", "age_rating")
+
+            fun parseBackdropFromObject(obj: JSONObject): String? {
+                for (key in listOf("backdrop_path", "backdrop", "backdrops")) {
+                    if (obj.has(key) && !obj.isNull(key)) {
+                        val array = obj.optJSONArray(key)
+                        if (array != null && array.length() > 0) {
+                            val first = array.optString(0).trim()
+                            if (first.isNotBlank() && first != "null") {
+                                return first
+                            }
+                        }
+                        val str = obj.optString(key).trim()
+                        if (str.isNotBlank() && str != "null") {
+                            return str
+                        }
+                    }
+                }
+                return null
+            }
+
+            val backdrop = parseBackdropFromObject(infoObj) ?: parseBackdropFromObject(rootObj)
+
+            val details = VodDetails(
+                streamId = vodId,
+                title = title,
+                movieImage = movieImage,
+                backdrop = backdrop,
+                plot = plot,
+                cast = cast,
+                director = director,
+                genre = genre,
+                releaseDate = releaseDate,
+                duration = duration,
+                rating = rating,
+                ageRating = ageRating
+            )
+
+            VodDetailsLoadResult.Success(details)
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao interpretar JSON de get_vod_info para vod_id=$vodId", e)
+            VodDetailsLoadResult.Error("Erro ao processar detalhes do filme")
+        }
     }
 }

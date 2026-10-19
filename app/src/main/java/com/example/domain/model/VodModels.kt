@@ -58,3 +58,34 @@ data class VodStreamsState(
     val errorMessage: String? = null,
     val strategyUsed: String = ""
 )
+
+/**
+ * Detalhes completos do filme VOD retornados por action=get_vod_info.
+ */
+data class VodDetails(
+    val streamId: String,
+    val title: String,
+    val movieImage: String? = null,
+    val backdrop: String? = null,
+    val plot: String? = null,
+    val cast: String? = null,
+    val director: String? = null,
+    val genre: String? = null,
+    val releaseDate: String? = null,
+    val duration: String? = null,
+    val rating: String? = null,
+    val ageRating: String? = null
+)
+
+/**
+ * Resultado do carregamento dos detalhes de um filme VOD (action=get_vod_info).
+ */
+sealed class VodDetailsLoadResult {
+    data class Success(
+        val details: VodDetails
+    ) : VodDetailsLoadResult()
+
+    data class Error(
+        val displayMessage: String
+    ) : VodDetailsLoadResult()
+}

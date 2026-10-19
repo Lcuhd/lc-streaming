@@ -29,6 +29,7 @@ import com.example.domain.model.ListStatus
 import com.example.domain.model.LiveStreamsLoadResult
 import com.example.domain.model.SeriesDetailsLoadResult
 import com.example.domain.model.SeriesLoadResult
+import com.example.domain.model.VodDetailsLoadResult
 import com.example.domain.model.VodStreamsLoadResult
 import com.example.domain.model.XtreamAuthResult
 import com.example.domain.model.XtreamCategory
@@ -213,6 +214,28 @@ class DeviceRepository(
             password = list.password,
             categoryId = category.categoryId,
             categoryName = category.categoryName
+        )
+    }
+
+    /**
+     * Consulta os detalhes completos de um filme VOD (action=get_vod_info).
+     * Somente permitido para listas ativas.
+     */
+    suspend fun fetchVodDetailsOnline(
+        list: DeviceListModel,
+        vodId: String
+    ): VodDetailsLoadResult = withContext(Dispatchers.IO) {
+        if (list.status != ListStatus.ACTIVE) {
+            val label = list.status.label
+            return@withContext VodDetailsLoadResult.Error(
+                displayMessage = "Lista $label. Consulta não permitida."
+            )
+        }
+        xtreamVodStreamsClient.fetchVodDetails(
+            dns = list.dns,
+            username = list.username,
+            password = list.password,
+            vodId = vodId
         )
     }
 
