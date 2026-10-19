@@ -247,6 +247,8 @@ fun CategoriesScreen(
             showSettingsScreen = false
         } else if (categoriesState?.seriesDetailsState != null) {
             viewModel.closeSeriesDetails()
+        } else if (categoriesState?.vodDetailsState != null) {
+            viewModel.closeVodDetails()
         } else if (categoriesState?.selectedCategoryForChannels != null) {
             pendingDirectOpen = null
             when (categoriesState.selectedCategoryForChannels?.type) {
@@ -300,6 +302,7 @@ fun CategoriesScreen(
         val currentMobileSection: AppMobileNavSection = remember(
             showSettingsScreen,
             categoriesState.seriesDetailsState,
+            categoriesState.vodDetailsState,
             categoriesState.selectedCategoryForChannels,
             isInnerCategoryExplorerOpen,
             categoriesState.selectedTab,
@@ -308,6 +311,7 @@ fun CategoriesScreen(
             when {
                 showSettingsScreen -> AppMobileNavSection.SETTINGS
                 categoriesState.seriesDetailsState != null -> AppMobileNavSection.SERIES
+                categoriesState.vodDetailsState != null -> AppMobileNavSection.VOD
                 categoriesState.selectedCategoryForChannels != null -> {
                     when (categoriesState.selectedCategoryForChannels?.type) {
                         CategoryType.LIVE -> AppMobileNavSection.LIVE
@@ -379,12 +383,24 @@ fun CategoriesScreen(
                             }
                         },
                         vodState = categoriesState.vodStreamsState,
+                        vodDetailsState = categoriesState.vodDetailsState,
                         listTitle = categoriesState.listTitle,
                         onBackClick = {
                             pendingDirectOpen = null
                             viewModel.closeVodCategoryMovies()
                         },
                         onRefreshClick = { viewModel.retryVodStreamsForCurrentCategory() },
+                        onOpenMovieDetails = { movie ->
+                            executeWithParentalCheck("CHANNEL", "VOD", movie.streamId, movie.name) {
+                                viewModel.openVodDetails(movie)
+                            }
+                        },
+                        onCloseMovieDetails = {
+                            viewModel.closeVodDetails()
+                        },
+                        onRetryMovieDetails = {
+                            viewModel.retryVodDetails()
+                        },
                         onMovieClick = { movie ->
                             executeWithParentalCheck("CHANNEL", "VOD", movie.streamId, movie.name) {
                                 viewModel.playVodMovie(movie)

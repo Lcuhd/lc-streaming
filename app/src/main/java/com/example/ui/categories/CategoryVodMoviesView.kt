@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.local.entity.SeriesProgressEntity
+import com.example.domain.model.VodDetailsState
 import com.example.domain.model.VodMovie
 import com.example.domain.model.VodStreamsState
 import com.example.domain.model.XtreamCategory
@@ -99,9 +100,13 @@ fun CategoryVodMoviesView(
     allCategories: List<XtreamCategory> = emptyList(),
     onSelectCategory: ((XtreamCategory) -> Unit)? = null,
     vodState: VodStreamsState?,
+    vodDetailsState: VodDetailsState? = null,
     listTitle: String,
     onBackClick: () -> Unit,
     onRefreshClick: () -> Unit,
+    onOpenMovieDetails: ((VodMovie) -> Unit)? = null,
+    onCloseMovieDetails: (() -> Unit)? = null,
+    onRetryMovieDetails: (() -> Unit)? = null,
     onMovieClick: (VodMovie) -> Unit,
     onGetMovieProgress: (suspend (VodMovie) -> SeriesProgressEntity?)? = null,
     onIsFavorite: (suspend (String) -> Boolean)? = null,
@@ -110,11 +115,6 @@ fun CategoryVodMoviesView(
     modifier: Modifier = Modifier
 ) {
     val backButtonFocusRequester = remember { FocusRequester() }
-    var selectedMovieForDetails by remember { mutableStateOf<VodMovie?>(null) }
-
-    BackHandler(enabled = selectedMovieForDetails != null) {
-        selectedMovieForDetails = null
-    }
 
     LaunchedEffect(Unit) {
         try {
@@ -126,12 +126,13 @@ fun CategoryVodMoviesView(
     val movies = vodState?.movies ?: emptyList()
     val errorMessage = vodState?.errorMessage
 
-    if (selectedMovieForDetails != null) {
+    if (vodDetailsState != null) {
         MovieDetailsView(
-            movie = selectedMovieForDetails!!,
-            onBackClick = { selectedMovieForDetails = null },
+            movie = vodDetailsState.movie,
+            vodDetailsState = vodDetailsState,
+            onBackClick = { onCloseMovieDetails?.invoke() },
+            onRetryClick = { onRetryMovieDetails?.invoke() },
             onPlayMovie = { movie ->
-                selectedMovieForDetails = null
                 onMovieClick(movie)
             },
             onGetMovieProgress = onGetMovieProgress,
@@ -154,7 +155,13 @@ fun CategoryVodMoviesView(
                     listTitle = listTitle,
                     onBackClick = onBackClick,
                     onRefreshClick = onRefreshClick,
-                    onMovieClick = { movie -> selectedMovieForDetails = movie },
+                    onMovieClick = { movie ->
+                        if (onOpenMovieDetails != null) {
+                            onOpenMovieDetails(movie)
+                        } else {
+                            onMovieClick(movie)
+                        }
+                    },
                     backFocusRequester = backButtonFocusRequester
                 )
             } else {
@@ -169,7 +176,13 @@ fun CategoryVodMoviesView(
                     listTitle = listTitle,
                     onBackClick = onBackClick,
                     onRefreshClick = onRefreshClick,
-                    onMovieClick = { movie -> selectedMovieForDetails = movie },
+                    onMovieClick = { movie ->
+                        if (onOpenMovieDetails != null) {
+                            onOpenMovieDetails(movie)
+                        } else {
+                            onMovieClick(movie)
+                        }
+                    },
                     backFocusRequester = backButtonFocusRequester
                 )
             }
@@ -183,7 +196,9 @@ fun CategoryVodMoviesView(
 @Composable
 fun MovieDetailsView(
     movie: VodMovie,
+    vodDetailsState: VodDetailsState? = null,
     onBackClick: () -> Unit,
+    onRetryClick: (() -> Unit)? = null,
     onPlayMovie: (VodMovie) -> Unit,
     onGetMovieProgress: (suspend (VodMovie) -> SeriesProgressEntity?)? = null,
     onIsFavorite: (suspend (String) -> Boolean)? = null,
@@ -195,6 +210,10 @@ fun MovieDetailsView(
     val backButtonFocusRequester = remember { FocusRequester() }
     val playButtonFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
+
+    val details = vodDetailsState?.details
+    val isLoading = vodDetailsState?.isLoading ?: false
+    val errorMessage = vodDetailsState?.errorMessage
 
     LaunchedEffect(movie.streamId) {
         if (onGetMovieProgress != null) {
@@ -220,6 +239,14 @@ fun MovieDetailsView(
         stringResource(R.string.btn_watch)
     }
 
+    val heroImageModel = details?.backdrop
+        ?: details?.movieImage
+        ?: movie.streamIcon
+
+    val displayTitle = details?.title?.ifBlank { null } ?: movie.name
+    val displayRating = details?.rating?.ifBlank { null } ?: movie.rating
+    val displayPlot = details?.plot?.ifBlank { null } ?: "Sinopse não disponível."
+
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color(0xFF050810))) {
         val isWideLayout = this.maxWidth >= 600.dp
 
@@ -244,10 +271,10 @@ fun MovieDetailsView(
                     .background(Color(0xFF080D1A))
                     .border(1.dp, TvSurfaceVariant, AppCorners.lg)
             ) {
-                if (!movie.streamIcon.isNullOrBlank()) {
+                if (!heroImageModel.isNullOrBlank()) {
                     AsyncImage(
-                        model = movie.streamIcon,
-                        contentDescription = "Backdrop de ${movie.name}",
+                        model = heroImageModel,
+                        contentDescription = "Backdrop de $displayTitle",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
@@ -312,7 +339,7 @@ fun MovieDetailsView(
                     )
                 }
 
-                // Conteúdo Hero (Título, Nota, Ações e Sinopse)
+                // Conteúdo Hero (Título, Nota, Ações e Metadados)
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -320,7 +347,7 @@ fun MovieDetailsView(
                     verticalArrangement = Arrangement.Bottom
                 ) {
                     Text(
-                        text = movie.name,
+                        text = displayTitle,
                         color = Color.White,
                         fontSize = if (isWideLayout) 26.sp else 20.sp,
                         fontWeight = FontWeight.Black,
@@ -335,7 +362,7 @@ fun MovieDetailsView(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (!movie.rating.isNullOrBlank() && movie.rating != "0") {
+                        if (!displayRating.isNullOrBlank() && displayRating != "0") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(3.dp)
@@ -347,7 +374,7 @@ fun MovieDetailsView(
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = movie.rating,
+                                    text = displayRating,
                                     color = Color.White,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
@@ -367,6 +394,53 @@ fun MovieDetailsView(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+
+                        val genreStr = details?.genre
+                        if (!genreStr.isNullOrBlank()) {
+                            Text(
+                                text = "• $genreStr",
+                                color = TvTextSecondary,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        val relDateStr = details?.releaseDate
+                        if (!relDateStr.isNullOrBlank()) {
+                            Text(
+                                text = "• $relDateStr",
+                                color = TvTextMuted,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        val durStr = details?.duration
+                        if (!durStr.isNullOrBlank()) {
+                            Text(
+                                text = "• $durStr",
+                                color = TvTextMuted,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        val ageRatingStr = details?.ageRating
+                        if (!ageRatingStr.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(AppCorners.xs)
+                                    .background(Color(0x22FFFFFF))
+                                    .border(1.dp, Color(0x44FFFFFF), AppCorners.xs)
+                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = ageRatingStr,
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
@@ -459,6 +533,83 @@ fun MovieDetailsView(
                 }
             }
 
+            // Indicador Discreto de Carregamento de Metadados
+            if (isLoading) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(AppCorners.md)
+                        .background(Color(0x220084FF))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = TvSecondaryBlue,
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = "Carregando informações adicionais do filme...",
+                        color = TvSecondaryBlue,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // Indicador Discreto de Erro no Carregamento dos Detalhes
+            if (errorMessage != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(AppCorners.md)
+                        .background(Color(0x22FF5252))
+                        .border(1.dp, Color(0x44FF5252), AppCorners.md)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = errorMessage,
+                            color = Color(0xFFFF5252),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (onRetryClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(AppCorners.xs)
+                                .background(TvPrimaryBlue)
+                                .clickable { onRetryClick() }
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Tentar novamente",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
             // Bloco de Sinopse
             Box(
                 modifier = Modifier
@@ -476,11 +627,66 @@ fun MovieDetailsView(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Disponível em alta definição no LC Player. Clique em Assistir para iniciar a reprodução imediata do filme.",
+                        text = displayPlot,
                         color = TvTextSecondary,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
                     )
+                }
+            }
+
+            // Bloco de Elenco (Se disponível)
+            val castStr = details?.cast
+            if (!castStr.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(AppCorners.lg)
+                        .background(TvCardBackground)
+                        .border(1.dp, TvSurfaceVariant, AppCorners.lg)
+                        .padding(AppSpacing.lg)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Elenco",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = castStr,
+                            color = TvTextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            }
+
+            // Bloco de Direção (Se disponível)
+            val dirStr = details?.director
+            if (!dirStr.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(AppCorners.lg)
+                        .background(TvCardBackground)
+                        .border(1.dp, TvSurfaceVariant, AppCorners.lg)
+                        .padding(AppSpacing.lg)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Direção",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = dirStr,
+                            color = TvTextSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
         }
