@@ -8,7 +8,6 @@ import androidx.room.PrimaryKey
  */
 @Entity(tableName = "series_progress")
 data class SeriesProgressEntity(
-    @PrimaryKey
     val episodeId: String,
     val seriesId: String,
     val seasonNum: Int,
@@ -16,5 +15,13 @@ data class SeriesProgressEntity(
     val positionMs: Long,
     val durationMs: Long,
     val completed: Boolean,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+
+    @PrimaryKey
+    val progressKey: String = episodeId,
+    val listId: String? = null,
+    val contentType: String? = null,
+    val contentId: String? = null,
+    val contentTitle: String? = null,
+    val contentImage: String? = null
 )

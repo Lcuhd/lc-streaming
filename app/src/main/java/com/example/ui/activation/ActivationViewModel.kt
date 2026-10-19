@@ -1575,7 +1575,9 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         errorMessage = null,
                         showControls = true,
                         epgState = null,
-                        startPositionMs = startPositionMs
+                        startPositionMs = startPositionMs,
+                        contentTitle = movie.name,
+                        contentImage = movie.streamIcon
                     )
                 )
             }
@@ -1785,7 +1787,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         )
 
         viewModelScope.launch {
-            val progressList = repository.getSeriesProgress(series.seriesId)
+            val progressList = repository.getSeriesProgress(currentList.id, series.seriesId)
             _uiState.update { state ->
                 val current = state.contentCategoriesState ?: return@update state
                 state.copy(
@@ -1808,7 +1810,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     private fun fetchSeriesDetails(list: DeviceListModel, series: SeriesItem) {
         viewModelScope.launch {
             val result = repository.fetchSeriesDetailsOnline(list, series.seriesId)
-            val progressList = repository.getSeriesProgress(series.seriesId)
+            val progressList = repository.getSeriesProgress(list.id, series.seriesId)
 
             _uiState.update { state ->
                 val current = state.contentCategoriesState ?: return@update state
@@ -1969,7 +1971,9 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     seriesId = sId,
                     seasonNum = episode.seasonNum,
                     episodeNum = episode.episodeNum,
-                    episodeId = episode.id
+                    episodeId = episode.id,
+                    contentTitle = seriesTitle,
+                    contentImage = details?.cover ?: seriesItem?.cover
                 )
             )
         }
@@ -2022,6 +2026,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     fun openPrimarySeriesButton() {
         val catState = _uiState.value.contentCategoriesState ?: return
         val detailsState = catState.seriesDetailsState ?: return
+        val listId = catState.listId
 
         when (val btnState = detailsState.primaryButtonState) {
             is SeriesButtonState.StartSeries -> {
@@ -2032,8 +2037,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             }
             is SeriesButtonState.RestartSeries -> {
                 viewModelScope.launch {
-                    repository.clearSeriesProgress(detailsState.seriesItem.seriesId)
-                    refreshSeriesDetailsProgress(detailsState.seriesItem.seriesId)
+                    repository.clearSeriesProgress(listId, detailsState.seriesItem.seriesId)
+                    refreshSeriesDetailsProgress(listId, detailsState.seriesItem.seriesId)
                     playSeriesEpisode(btnState.firstEpisode, startPositionMs = 0L)
                 }
             }
@@ -2065,8 +2070,18 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         if (seriesId != null && episodeId != null) {
             val seasonNum = playerState.seasonNum ?: 1
             val episodeNum = playerState.episodeNum ?: 1
+            val progressKey = "${listId}_SERIES_EP_${episodeId}"
+            val contentTitle = playerState.contentTitle
+            val contentImage = playerState.contentImage
+
             viewModelScope.launch {
                 repository.saveEpisodeProgress(
+                    progressKey = progressKey,
+                    listId = listId,
+                    contentType = "SERIES",
+                    contentId = seriesId,
+                    contentTitle = contentTitle,
+                    contentImage = contentImage,
                     seriesId = seriesId,
                     episodeId = episodeId,
                     seasonNum = seasonNum,
@@ -2075,14 +2090,23 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     durationMs = durationMs,
                     completed = completed
                 )
-                refreshSeriesDetailsProgress(seriesId)
+                refreshSeriesDetailsProgress(listId, seriesId)
             }
         } else if (playerState.channel.streamType == "movie") {
             val movieId = playerState.channel.streamId
             val movieKey = "${listId}_VOD_${movieId}"
             val vodSeriesId = "VOD_${listId}"
+            val contentTitle = playerState.contentTitle ?: playerState.channel.name
+            val contentImage = playerState.contentImage ?: playerState.channel.streamIcon
+
             viewModelScope.launch {
                 repository.saveEpisodeProgress(
+                    progressKey = movieKey,
+                    listId = listId,
+                    contentType = "VOD",
+                    contentId = movieId,
+                    contentTitle = contentTitle,
+                    contentImage = contentImage,
                     seriesId = vodSeriesId,
                     episodeId = movieKey,
                     seasonNum = 0,
@@ -2095,9 +2119,9 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private fun refreshSeriesDetailsProgress(seriesId: String) {
+    private fun refreshSeriesDetailsProgress(listId: String, seriesId: String) {
         viewModelScope.launch {
-            val progressList = repository.getSeriesProgress(seriesId)
+            val progressList = repository.getSeriesProgress(listId, seriesId)
             _uiState.update { state ->
                 val current = state.contentCategoriesState ?: return@update state
                 val detState = current.seriesDetailsState ?: return@update state

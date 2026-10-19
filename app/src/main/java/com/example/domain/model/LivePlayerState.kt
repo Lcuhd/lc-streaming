@@ -18,5 +18,7 @@ data class LivePlayerState(
     val seriesId: String? = null,
     val seasonNum: Int? = null,
     val episodeNum: Int? = null,
-    val episodeId: String? = null
+    val episodeId: String? = null,
+    val contentTitle: String? = null,
+    val contentImage: String? = null
 )

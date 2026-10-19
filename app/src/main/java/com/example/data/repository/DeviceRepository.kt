@@ -284,7 +284,7 @@ class DeviceRepository(
     }
 
     /**
-     * Salva o progresso local de reprodução de um episódio de série.
+     * Salva o progresso local de reprodução de um filme VOD ou episódio de série.
      */
     suspend fun saveEpisodeProgress(
         seriesId: String,
@@ -293,10 +293,22 @@ class DeviceRepository(
         episodeNum: Int,
         positionMs: Long,
         durationMs: Long,
-        completed: Boolean
+        completed: Boolean,
+        progressKey: String = episodeId,
+        listId: String? = null,
+        contentType: String? = null,
+        contentId: String? = null,
+        contentTitle: String? = null,
+        contentImage: String? = null
     ) = withContext(Dispatchers.IO) {
         val dao = seriesProgressDao ?: return@withContext
         val entry = SeriesProgressEntity(
+            progressKey = progressKey,
+            listId = listId,
+            contentType = contentType,
+            contentId = contentId,
+            contentTitle = contentTitle,
+            contentImage = contentImage,
             episodeId = episodeId,
             seriesId = seriesId,
             seasonNum = seasonNum,
@@ -309,8 +321,26 @@ class DeviceRepository(
         dao.saveProgress(entry)
         android.util.Log.i(
             "LCPlayer_SeriesProgress",
-            "Progresso salvo: series_id=$seriesId, episode_id=$episodeId, season=$seasonNum, ep=$episodeNum, pos=${positionMs}ms, duration=${durationMs}ms, completed=$completed"
+            "Progresso salvo: key=$progressKey, listId=$listId, type=$contentType, contentId=$contentId, series_id=$seriesId, episode_id=$episodeId, season=$seasonNum, ep=$episodeNum, pos=${positionMs}ms, duration=${durationMs}ms, completed=$completed"
         )
+    }
+
+    /**
+     * Resgata o histórico local de progresso de episódios de uma série para a lista ativa.
+     * Combina os registros list-scoped com registros legados (listId IS NULL), deduplicando por episodeId.
+     */
+    suspend fun getSeriesProgress(listId: String, seriesId: String): List<SeriesProgressEntity> = withContext(Dispatchers.IO) {
+        val dao = seriesProgressDao ?: return@withContext emptyList()
+        val listScoped = dao.getProgressForListSeries(listId, seriesId)
+        val legacy = dao.getLegacyProgressForSeries(seriesId)
+
+        if (legacy.isEmpty()) {
+            listScoped
+        } else {
+            val scopedEpisodeIds = listScoped.map { it.episodeId }.toSet()
+            val filteredLegacy = legacy.filter { it.episodeId !in scopedEpisodeIds }
+            (listScoped + filteredLegacy).sortedByDescending { it.updatedAt }
+        }
     }
 
     /**
@@ -328,10 +358,20 @@ class DeviceRepository(
     }
 
     /**
-     * Resgata o progresso salvo de um episódio específico.
+     * Resgata o progresso salvo de um episódio específico por chave ou episodeId.
      */
-    suspend fun getEpisodeProgress(episodeId: String): SeriesProgressEntity? = withContext(Dispatchers.IO) {
-        seriesProgressDao?.getProgressForEpisode(episodeId)
+    suspend fun getEpisodeProgress(progressKeyOrEpisodeId: String): SeriesProgressEntity? = withContext(Dispatchers.IO) {
+        val dao = seriesProgressDao ?: return@withContext null
+        dao.getProgressByKey(progressKeyOrEpisodeId) ?: dao.getProgressForEpisode(progressKeyOrEpisodeId)
+    }
+
+    /**
+     * Limpa o progresso salvo de uma série para a lista ativa e registros legados.
+     */
+    suspend fun clearSeriesProgress(listId: String, seriesId: String) = withContext(Dispatchers.IO) {
+        val dao = seriesProgressDao ?: return@withContext
+        dao.clearSeriesProgressForList(listId, seriesId)
+        dao.clearLegacySeriesProgress(seriesId)
     }
 
     /**
@@ -339,6 +379,26 @@ class DeviceRepository(
      */
     suspend fun clearSeriesProgress(seriesId: String) = withContext(Dispatchers.IO) {
         seriesProgressDao?.clearProgressForSeries(seriesId)
+    }
+
+    /**
+     * Retorna os conteúdos em andamento recentes para a lista ativa, deduplicados por (contentType + contentId).
+     */
+    suspend fun getRecentInProgressForList(listId: String, limit: Int = 12): List<SeriesProgressEntity> = withContext(Dispatchers.IO) {
+        val dao = seriesProgressDao ?: return@withContext emptyList()
+        val rawList = dao.getRecentInProgressForList(listId, limit = 50)
+
+        val seenKeys = mutableSetOf<String>()
+        val result = mutableListOf<SeriesProgressEntity>()
+
+        for (item in rawList) {
+            val key = "${item.contentType}_${item.contentId}"
+            if (seenKeys.add(key)) {
+                result.add(item)
+                if (result.size >= limit) break
+            }
+        }
+        result
     }
 
     /**
