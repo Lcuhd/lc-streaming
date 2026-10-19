@@ -127,9 +127,32 @@ fun CategoryVodMoviesView(
     val errorMessage = vodState?.errorMessage
 
     if (vodDetailsState != null) {
+        val currentMovie = vodDetailsState.movie
+        val recommendations = remember(movies, currentMovie.streamId) {
+            if (movies.size <= 1) {
+                emptyList()
+            } else {
+                val currentIndex = movies.indexOfFirst { it.streamId == currentMovie.streamId }
+                val ordered = if (currentIndex >= 0) {
+                    movies.drop(currentIndex + 1) + movies.take(currentIndex)
+                } else {
+                    movies
+                }
+                ordered.filter { it.streamId != currentMovie.streamId }.take(10)
+            }
+        }
+
         MovieDetailsView(
-            movie = vodDetailsState.movie,
+            movie = currentMovie,
             vodDetailsState = vodDetailsState,
+            recommendations = recommendations,
+            onRecommendationClick = { recMovie ->
+                if (onOpenMovieDetails != null) {
+                    onOpenMovieDetails(recMovie)
+                } else {
+                    onMovieClick(recMovie)
+                }
+            },
             onBackClick = { onCloseMovieDetails?.invoke() },
             onRetryClick = { onRetryMovieDetails?.invoke() },
             onPlayMovie = { movie ->
@@ -197,6 +220,8 @@ fun CategoryVodMoviesView(
 fun MovieDetailsView(
     movie: VodMovie,
     vodDetailsState: VodDetailsState? = null,
+    recommendations: List<VodMovie> = emptyList(),
+    onRecommendationClick: ((VodMovie) -> Unit)? = null,
     onBackClick: () -> Unit,
     onRetryClick: (() -> Unit)? = null,
     onPlayMovie: (VodMovie) -> Unit,
@@ -689,7 +714,94 @@ fun MovieDetailsView(
                     }
                 }
             }
+
+            // Seção de Recomendações: "Você também pode gostar" (Mobile)
+            if (!isWideLayout && recommendations.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Você também pode gostar",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items(recommendations, key = { it.streamId }) { recMovie ->
+                            RecommendedMovieCardItem(
+                                movie = recMovie,
+                                onClick = { onRecommendationClick?.invoke(recMovie) }
+                            )
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun RecommendedMovieCardItem(
+    movie: VodMovie,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(110.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(TvCardBackground)
+            .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+            .tvFocusable(
+                shape = RoundedCornerShape(10.dp),
+                focusBorderColor = TvFocusBorder,
+                focusedScale = 1.05f,
+                onClick = onClick
+            )
+            .padding(6.dp)
+            .testTag("recommended_movie_card_${movie.streamId}")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF142033)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!movie.streamIcon.isNullOrBlank()) {
+                AsyncImage(
+                    model = movie.streamIcon,
+                    contentDescription = "Capa do filme recomendado ${movie.name}",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Image(
+                    painter = painterResource(id = R.drawable.placeholder_poster),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = movie.name,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 14.sp
+        )
     }
 }
 
