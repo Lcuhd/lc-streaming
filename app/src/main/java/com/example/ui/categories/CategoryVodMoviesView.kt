@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -268,9 +269,15 @@ fun MovieDetailsView(
         ?: details?.movieImage
         ?: movie.streamIcon
 
-    val displayTitle = details?.title?.ifBlank { null } ?: movie.name
-    val displayRating = details?.rating?.ifBlank { null } ?: movie.rating
-    val displayPlot = details?.plot?.ifBlank { null } ?: "Sinopse não disponível."
+    fun isValidMeta(value: String?): Boolean {
+        if (value == null) return false
+        val trimmed = value.trim()
+        return trimmed.isNotBlank() && !trimmed.equals("null", ignoreCase = true)
+    }
+
+    val displayTitle = if (isValidMeta(details?.title)) details!!.title!!.trim() else movie.name
+    val displayRating = if (isValidMeta(details?.rating)) details!!.rating!!.trim() else movie.rating
+    val displayPlot = if (isValidMeta(details?.plot)) details!!.plot!!.trim() else "Sinopse não disponível."
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color(0xFF050810))) {
         val isWideLayout = this.maxWidth >= 600.dp
@@ -364,195 +371,355 @@ fun MovieDetailsView(
                     )
                 }
 
-                // Conteúdo Hero (Título, Nota, Ações e Metadados)
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(AppSpacing.lg),
-                    verticalArrangement = Arrangement.Bottom
-                ) {
-                    Text(
-                        text = displayTitle,
-                        color = Color.White,
-                        fontSize = if (isWideLayout) 26.sp else 20.sp,
-                        fontWeight = FontWeight.Black,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Metadados
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Conteúdo Hero (WIDE / TV Apenas: Título, Nota, Ações e Metadados sobrepostos)
+                if (isWideLayout) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(AppSpacing.lg),
+                        verticalArrangement = Arrangement.Bottom
                     ) {
-                        if (!displayRating.isNullOrBlank() && displayRating != "0") {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFFC107),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Text(
-                                    text = displayRating,
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                        Text(
+                            text = displayTitle,
+                            color = Color.White,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
 
-                        Box(
-                            modifier = Modifier
-                                .clip(AppCorners.xs)
-                                .background(Color(0x330084FF))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Metadados
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = (movie.containerExtension ?: "MP4").uppercase(),
-                                color = TvSecondaryBlue,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                            if (!displayRating.isNullOrBlank() && displayRating != "0") {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFC107),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = displayRating,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
 
-                        val genreStr = details?.genre
-                        if (!genreStr.isNullOrBlank()) {
-                            Text(
-                                text = "• $genreStr",
-                                color = TvTextSecondary,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        val relDateStr = details?.releaseDate
-                        if (!relDateStr.isNullOrBlank()) {
-                            Text(
-                                text = "• $relDateStr",
-                                color = TvTextMuted,
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        val durStr = details?.duration
-                        if (!durStr.isNullOrBlank()) {
-                            Text(
-                                text = "• $durStr",
-                                color = TvTextMuted,
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        val ageRatingStr = details?.ageRating
-                        if (!ageRatingStr.isNullOrBlank()) {
                             Box(
                                 modifier = Modifier
                                     .clip(AppCorners.xs)
-                                    .background(Color(0x22FFFFFF))
-                                    .border(1.dp, Color(0x44FFFFFF), AppCorners.xs)
-                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    .background(Color(0x330084FF))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = ageRatingStr,
-                                    color = Color.White,
+                                    text = (movie.containerExtension ?: "MP4").uppercase(),
+                                    color = TvSecondaryBlue,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+
+                            val genreStr = details?.genre
+                            if (!genreStr.isNullOrBlank()) {
+                                Text(
+                                    text = "• $genreStr",
+                                    color = TvTextSecondary,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            val relDateStr = details?.releaseDate
+                            if (!relDateStr.isNullOrBlank()) {
+                                Text(
+                                    text = "• $relDateStr",
+                                    color = TvTextMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            val durStr = details?.duration
+                            if (!durStr.isNullOrBlank()) {
+                                Text(
+                                    text = "• $durStr",
+                                    color = TvTextMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            val ageRatingStr = details?.ageRating
+                            if (!ageRatingStr.isNullOrBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(AppCorners.xs)
+                                        .background(Color(0x22FFFFFF))
+                                        .border(1.dp, Color(0x44FFFFFF), AppCorners.xs)
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = ageRatingStr,
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Botões de Ação: [ Assistir ] + [ Favoritar ♥ ]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Botão Principal "Assistir"
+                            Box(
+                                modifier = Modifier
+                                    .height(44.dp)
+                                    .clip(AppCorners.md)
+                                    .background(TvPrimaryBlue)
+                                    .tvFocusable(
+                                        shape = AppCorners.md,
+                                        focusBorderColor = Color.White,
+                                        focusedScale = 1.05f,
+                                        onClick = { onPlayMovie(movie) }
+                                    )
+                                    .focusRequester(playButtonFocusRequester)
+                                    .padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = watchButtonLabel,
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            // Botão Secundário "Favoritar"
+                            Box(
+                                modifier = Modifier
+                                    .height(44.dp)
+                                    .clip(AppCorners.md)
+                                    .background(if (isFavorite) Color(0x33FF3D71) else TvSurface)
+                                    .border(1.dp, if (isFavorite) Color(0xFFFF3D71) else TvSurfaceVariant, AppCorners.md)
+                                    .tvFocusable(
+                                        shape = AppCorners.md,
+                                        focusBorderColor = Color.White,
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                if (onToggleFavorite != null) {
+                                                    try {
+                                                        isFavorite = onToggleFavorite(movie.streamId)
+                                                    } catch (_: Exception) {}
+                                                } else {
+                                                    isFavorite = !isFavorite
+                                                }
+                                            }
+                                        }
+                                    )
+                                    .padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = stringResource(R.string.btn_favorite),
+                                        tint = if (isFavorite) Color(0xFFFF3D71) else Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = if (isFavorite) stringResource(R.string.btn_favorited) else stringResource(R.string.btn_favorite),
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // NOVO BLOCO MOBILE EXCLUSIVO ABAIXO DO HERO
+            if (!isWideLayout) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Linha 1: Título do Filme (Esquerda) + Estrela Favorito (Direita)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = displayTitle,
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(if (isFavorite) Color(0x33FFC107) else Color(0x11FFFFFF))
+                                .border(1.dp, if (isFavorite) Color(0xFFFFC107) else Color(0x33FFFFFF), CircleShape)
+                                .clickable {
+                                    coroutineScope.launch {
+                                        if (onToggleFavorite != null) {
+                                            try {
+                                                isFavorite = onToggleFavorite(movie.streamId)
+                                            } catch (_: Exception) {}
+                                        } else {
+                                            isFavorite = !isFavorite
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = "Favoritar filme",
+                                tint = if (isFavorite) Color(0xFFFFC107) else Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    // Linhas de Metadados Organizadas (Sem formato MP4/MKV no Mobile e Sem "null")
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Primeira linha de metadados: Nota e Classificação Etária
+                        val ageRatingStr = if (isValidMeta(details?.ageRating)) details!!.ageRating!!.trim() else null
+                        val hasRating = isValidMeta(displayRating) && displayRating != "0"
 
-                    // Botões de Ação: [ Assistir ] + [ Favoritar ♥ ]
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Botão Principal "Assistir"
-                        Box(
-                            modifier = Modifier
-                                .height(44.dp)
-                                .clip(AppCorners.md)
-                                .background(TvPrimaryBlue)
-                                .tvFocusable(
-                                    shape = AppCorners.md,
-                                    focusBorderColor = Color.White,
-                                    focusedScale = 1.05f,
-                                    onClick = { onPlayMovie(movie) }
-                                )
-                                .focusRequester(playButtonFocusRequester)
-                                .padding(horizontal = 20.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        if (hasRating || ageRatingStr != null) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = watchButtonLabel,
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                if (hasRating) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFC107),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = displayRating!!,
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                if (ageRatingStr != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(AppCorners.xs)
+                                            .background(Color(0x22FFFFFF))
+                                            .border(1.dp, Color(0x44FFFFFF), AppCorners.xs)
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = ageRatingStr,
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
                         }
 
-                        // Botão Secundário "Favoritar"
-                        Box(
-                            modifier = Modifier
-                                .height(44.dp)
-                                .clip(AppCorners.md)
-                                .background(if (isFavorite) Color(0x33FF3D71) else TvSurface)
-                                .border(1.dp, if (isFavorite) Color(0xFFFF3D71) else TvSurfaceVariant, AppCorners.md)
-                                .tvFocusable(
-                                    shape = AppCorners.md,
-                                    focusBorderColor = Color.White,
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            if (onToggleFavorite != null) {
-                                                try {
-                                                    isFavorite = onToggleFavorite(movie.streamId)
-                                                } catch (_: Exception) {}
-                                            } else {
-                                                isFavorite = !isFavorite
-                                            }
-                                        }
-                                    }
-                                )
-                                .padding(horizontal = 14.dp),
-                            contentAlignment = Alignment.Center
+                        // Segunda linha: Ano/Data e Duração (se disponíveis e válidos)
+                        val relDateStr = if (isValidMeta(details?.releaseDate)) details!!.releaseDate!!.trim() else null
+                        val durStr = if (isValidMeta(details?.duration)) details!!.duration!!.trim() else null
+                        if (relDateStr != null || durStr != null) {
+                            val dateAndDurText = listOfNotNull(relDateStr, durStr).joinToString("  •  ")
+                            Text(
+                                text = dateAndDurText,
+                                color = TvTextMuted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // Terceira linha: Gênero (se disponível e válido)
+                        val genreStr = if (isValidMeta(details?.genre)) details!!.genre!!.trim() else null
+                        if (genreStr != null) {
+                            Text(
+                                text = genreStr,
+                                color = TvTextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // Botão Principal "Assistir / Continuar" em Linha Própria no Mobile
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .clip(AppCorners.md)
+                            .background(TvPrimaryBlue)
+                            .clickable { onPlayMovie(movie) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = stringResource(R.string.btn_favorite),
-                                    tint = if (isFavorite) Color(0xFFFF3D71) else Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = if (isFavorite) stringResource(R.string.btn_favorited) else stringResource(R.string.btn_favorite),
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = watchButtonLabel,
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
