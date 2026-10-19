@@ -89,3 +89,13 @@ sealed class VodDetailsLoadResult {
         val displayMessage: String
     ) : VodDetailsLoadResult()
 }
+
+/**
+ * Estado em memória dos detalhes completos de um filme VOD selecionado.
+ */
+data class VodDetailsState(
+    val movie: VodMovie,
+    val details: VodDetails? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
+)

@@ -35,6 +35,8 @@ import com.example.domain.model.SeriesItem
 import com.example.domain.model.SeriesLoadResult
 import com.example.domain.model.SeriesState
 import com.example.domain.model.getNextEpisode
+import com.example.domain.model.VodDetailsLoadResult
+import com.example.domain.model.VodDetailsState
 import com.example.domain.model.VodMovie
 import com.example.domain.model.VodStreamsLoadResult
 import com.example.domain.model.VodStreamsState
@@ -328,6 +330,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                                 selectedCategoryForChannels = null,
                                 liveStreamsState = null,
                                 vodStreamsState = null,
+                                vodDetailsState = null,
                                 seriesState = null
                             )
                         } else currentCatState
@@ -1367,7 +1370,125 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             state.copy(
                 contentCategoriesState = current.copy(
                     selectedCategoryForChannels = null,
-                    vodStreamsState = null
+                    vodStreamsState = null,
+                    vodDetailsState = null
+                )
+            )
+        }
+    }
+
+    /**
+     * Abre a tela de detalhes de um filme VOD e dispara o carregamento dos dados completos (get_vod_info).
+     */
+    fun openVodDetails(movie: VodMovie) {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        Log.i(
+            TAG,
+            "Solicitando detalhes do filme VOD: '${movie.name}' (stream_id=${movie.streamId})"
+        )
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    vodDetailsState = VodDetailsState(
+                        movie = movie,
+                        details = null,
+                        isLoading = true,
+                        errorMessage = null
+                    )
+                )
+            )
+        }
+
+        fetchVodDetails(currentList, movie)
+    }
+
+    /**
+     * Requisita via API Xtream (get_vod_info) os detalhes completos do filme VOD.
+     */
+    private fun fetchVodDetails(
+        list: DeviceListModel,
+        movie: VodMovie
+    ) {
+        viewModelScope.launch {
+            val result = repository.fetchVodDetailsOnline(
+                list = list,
+                vodId = movie.streamId
+            )
+
+            _uiState.update { state ->
+                val current = state.contentCategoriesState ?: return@update state
+                val currentDetailsState = current.vodDetailsState ?: return@update state
+
+                if (currentDetailsState.movie.streamId != movie.streamId) {
+                    Log.d(TAG, "Resultado de detalhes VOD descartado: filme ativo mudou")
+                    return@update state
+                }
+
+                val updatedDetailsState = when (result) {
+                    is VodDetailsLoadResult.Success -> {
+                        Log.i(TAG, "Detalhes VOD carregados com sucesso para '${movie.name}'")
+                        currentDetailsState.copy(
+                            details = result.details,
+                            isLoading = false,
+                            errorMessage = null
+                        )
+                    }
+                    is VodDetailsLoadResult.Error -> {
+                        Log.w(TAG, "Erro ao carregar detalhes VOD de '${movie.name}': ${result.displayMessage}")
+                        currentDetailsState.copy(
+                            isLoading = false,
+                            errorMessage = result.displayMessage
+                        )
+                    }
+                }
+
+                state.copy(
+                    contentCategoriesState = current.copy(
+                        vodDetailsState = updatedDetailsState
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * Tenta novamente carregar os detalhes do filme VOD ativo.
+     */
+    fun retryVodDetails() {
+        val catState = _uiState.value.contentCategoriesState ?: return
+        val detailsState = catState.vodDetailsState ?: return
+        val currentList = _uiState.value.lists.firstOrNull { it.id == catState.listId } ?: return
+
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            val curDetails = current.vodDetailsState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    vodDetailsState = curDetails.copy(
+                        isLoading = true,
+                        errorMessage = null
+                    )
+                )
+            )
+        }
+
+        fetchVodDetails(currentList, detailsState.movie)
+    }
+
+    /**
+     * Fecha os detalhes do filme VOD sem limpar o estado da lista/categoria de filmes já carregados.
+     */
+    fun closeVodDetails() {
+        Log.i(TAG, "Fechando detalhes do filme VOD")
+        _uiState.update { state ->
+            val current = state.contentCategoriesState ?: return@update state
+            state.copy(
+                contentCategoriesState = current.copy(
+                    vodDetailsState = null
                 )
             )
         }

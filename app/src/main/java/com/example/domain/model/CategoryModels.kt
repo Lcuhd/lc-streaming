@@ -95,6 +95,7 @@ data class ListContentCategoriesState(
     val selectedCategoryForChannels: XtreamCategory? = null,
     val liveStreamsState: LiveStreamsState? = null,
     val vodStreamsState: VodStreamsState? = null,
+    val vodDetailsState: VodDetailsState? = null,
     val seriesState: SeriesState? = null,
     val seriesDetailsState: SeriesDetailsState? = null
 ) {
