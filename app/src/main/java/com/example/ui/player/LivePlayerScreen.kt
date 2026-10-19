@@ -159,11 +159,13 @@ fun LivePlayerScreen(
     var showChannelZappingBox by remember { mutableStateOf(false) }
 
     val streamTypeClean = playerState.channel.streamType?.lowercase()?.trim().orEmpty()
-    val isVodContent = streamTypeClean == "movie" ||
+    val isSeries = playerState.seriesId != null
+    val isMovie = streamTypeClean == "movie"
+    val isVodContent = isMovie ||
                        streamTypeClean == "series" ||
                        streamTypeClean == "episode" ||
                        streamTypeClean == "vod" ||
-                       playerState.seriesId != null ||
+                       isSeries ||
                        playerState.episodeId != null
     val isLiveTv = !isVodContent
 
@@ -216,14 +218,16 @@ fun LivePlayerScreen(
                         isBuffering = false
                         isPlaying = false
                         onPlayerStateChange(false, false, null)
-                        if (playerState.seriesId != null) {
+                        if (isSeries || isMovie) {
                             val dur = exoPlayer.duration
                             onSaveProgress?.invoke(
                                 if (dur > 0) dur else 0L,
                                 if (dur > 0) dur else 0L,
                                 true
                             )
-                            onEpisodeEnded?.invoke()
+                            if (isSeries) {
+                                onEpisodeEnded?.invoke()
+                            }
                         }
                     }
                     Player.STATE_IDLE -> {}
@@ -262,7 +266,7 @@ fun LivePlayerScreen(
         exoPlayer.addListener(listener)
 
         onDispose {
-            if (playerState.seriesId != null) {
+            if (isSeries || isMovie) {
                 val pos = exoPlayer.currentPosition
                 val dur = exoPlayer.duration
                 if (pos > 0 && dur > 0) {
@@ -284,7 +288,7 @@ fun LivePlayerScreen(
             if (pos >= 0) currentPositionMs = pos
             if (dur > 0) durationMs = dur
 
-            if (playerState.seriesId != null && pos > 0 && dur > 0) {
+            if ((isSeries || isMovie) && pos > 0 && dur > 0) {
                 val completed = pos >= 0.92 * dur
                 onSaveProgress?.invoke(if (completed) dur else pos, dur, completed)
             }
