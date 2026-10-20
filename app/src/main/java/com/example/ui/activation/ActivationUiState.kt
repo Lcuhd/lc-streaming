@@ -6,8 +6,25 @@ import com.example.domain.model.DeviceListModel
 import com.example.domain.model.ListContentCategoriesState
 import com.example.domain.model.LivePlayerState
 import com.example.domain.model.XtreamAuthResult
-
 import com.example.domain.model.ShortEpgState
+
+/**
+ * Item de apresentação para o carrossel "Continuar assistindo" da Home.
+ */
+data class HomeContinueItem(
+    val progressKey: String,
+    val contentType: String,
+    val contentId: String,
+    val title: String,
+    val imageUrl: String?,
+    val episodeId: String,
+    val seriesId: String,
+    val seasonNum: Int?,
+    val episodeNum: Int?,
+    val positionMs: Long,
+    val durationMs: Long,
+    val progressFraction: Float
+)
 
 enum class AppScreenSection {
     ACTIVATION,
@@ -52,5 +69,9 @@ data class ActivationUiState(
     val livePlayerState: LivePlayerState? = null,
 
     // Mapeamento de EPG curto por stream_id dos canais
-    val channelEpgStates: Map<String, ShortEpgState> = emptyMap()
+    val channelEpgStates: Map<String, ShortEpgState> = emptyMap(),
+
+    // Estado do carrossel "Continuar assistindo" (Home)
+    val homeContinueItems: List<HomeContinueItem> = emptyList(),
+    val isLoadingHomeContinue: Boolean = false
 )

@@ -589,6 +589,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 contentCategoriesState = null,
                 selectedListId = null,
                 isAutoSelectedList = false,
+                homeContinueItems = emptyList(),
+                isLoadingHomeContinue = false,
                 currentSection = AppScreenSection.MY_LISTS,
                 toastFeedback = "Sessão da lista encerrada"
             )
@@ -628,6 +630,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 selectedListId = list.id,
                 isAutoSelectedList = if (wasOnMyLists) false else it.isAutoSelectedList,
                 currentSection = AppScreenSection.CONTENT_CATEGORIES,
+                homeContinueItems = emptyList(),
+                isLoadingHomeContinue = false,
                 contentCategoriesState = ListContentCategoriesState(
                     listId = list.id,
                     listTitle = list.title,
@@ -642,6 +646,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 )
             )
         }
+        refreshHomeContinueWatching()
     }
 
     /**
@@ -2091,6 +2096,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     completed = completed
                 )
                 refreshSeriesDetailsProgress(listId, seriesId)
+                refreshHomeContinueWatching()
             }
         } else if (playerState.channel.streamType == "movie") {
             val movieId = playerState.channel.streamId
@@ -2115,6 +2121,91 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     durationMs = durationMs,
                     completed = completed
                 )
+                refreshHomeContinueWatching()
+            }
+        }
+    }
+
+    /**
+     * Atualiza o estado compartilhado 'homeContinueItems' com os conteúdos em andamento
+     * para a lista ativa atual.
+     */
+    fun refreshHomeContinueWatching() {
+        val listId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+
+        if (listId.isNullOrBlank()) {
+            _uiState.update {
+                it.copy(
+                    homeContinueItems = emptyList(),
+                    isLoadingHomeContinue = false
+                )
+            }
+            return
+        }
+
+        _uiState.update { it.copy(isLoadingHomeContinue = true) }
+
+        viewModelScope.launch {
+            try {
+                val rawList = repository.getRecentInProgressForList(listId, limit = 12)
+
+                val validItems = rawList.mapNotNull { item ->
+                    val cType = item.contentType?.trim()?.uppercase()
+                    if (cType != "VOD" && cType != "SERIES") return@mapNotNull null
+
+                    val cId = item.contentId?.trim()
+                    if (cId.isNullOrBlank()) return@mapNotNull null
+
+                    val rawTitle = item.contentTitle?.trim()
+                    if (rawTitle.isNullOrBlank() || rawTitle.equals("null", ignoreCase = true)) return@mapNotNull null
+
+                    if (item.positionMs <= 0 || item.durationMs <= 0 || item.completed) return@mapNotNull null
+
+                    val progressFraction = (item.positionMs.toFloat() / item.durationMs.toFloat()).coerceIn(0f, 1f)
+
+                    val rawImage = item.contentImage?.trim()
+                    val imageUrl = if (rawImage.isNullOrBlank() || rawImage.equals("null", ignoreCase = true)) null else rawImage
+
+                    val isSeries = cType == "SERIES"
+
+                    HomeContinueItem(
+                        progressKey = item.progressKey,
+                        contentType = cType,
+                        contentId = cId,
+                        title = rawTitle,
+                        imageUrl = imageUrl,
+                        episodeId = item.episodeId,
+                        seriesId = item.seriesId,
+                        seasonNum = if (isSeries) item.seasonNum else null,
+                        episodeNum = if (isSeries) item.episodeNum else null,
+                        positionMs = item.positionMs,
+                        durationMs = item.durationMs,
+                        progressFraction = progressFraction
+                    )
+                }
+
+                _uiState.update { state ->
+                    val currentActiveListId = state.contentCategoriesState?.listId ?: state.selectedListId
+                    if (currentActiveListId == listId) {
+                        state.copy(
+                            homeContinueItems = validItems,
+                            isLoadingHomeContinue = false
+                        )
+                    } else {
+                        Log.d(TAG, "Resultado de 'Continuar assistindo' descartado: lista ativa mudou ($listId != $currentActiveListId)")
+                        state
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Erro ao carregar itens de 'Continuar assistindo' da Home para listId=$listId", e)
+                _uiState.update { state ->
+                    val currentActiveListId = state.contentCategoriesState?.listId ?: state.selectedListId
+                    if (currentActiveListId == listId) {
+                        state.copy(isLoadingHomeContinue = false)
+                    } else {
+                        state
+                    }
+                }
             }
         }
     }
