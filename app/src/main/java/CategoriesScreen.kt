@@ -533,6 +533,9 @@ fun CategoriesScreen(
                     uiState.homeContinueItems.filter { it.contentType == "SERIES" }
                 }
                 val hasContent = continueMovies.isNotEmpty() || continueSeries.isNotEmpty()
+                val isGlobalRefreshing = uiState.isLoadingLists ||
+                    uiState.isLoadingHomeContinue ||
+                    categoriesState?.isAnyLoading == true
 
                 Row(
                     modifier = Modifier.fillMaxSize()
@@ -543,6 +546,7 @@ fun CategoriesScreen(
                         initialFocusRequester = initialFocusRequester,
                         contentFocusRequester = wideHomeContentFocusRequester,
                         hasFocusableContent = hasContent,
+                        isRefreshing = isGlobalRefreshing,
                         onSelectItem = { item ->
                             when (item) {
                                 TvSideNavItem.HOME -> { /* Já na Home */ }
@@ -560,6 +564,11 @@ fun CategoriesScreen(
                                     viewModel.selectCategoryTab(CategoryType.SERIES)
                                     viewModel.ensureCategoriesLoaded(CategoryType.SERIES)
                                     pendingDirectOpen = CategoryType.SERIES
+                                }
+                                TvSideNavItem.REFRESH -> {
+                                    if (!isGlobalRefreshing) {
+                                        viewModel.refreshAppFromHome()
+                                    }
                                 }
                                 TvSideNavItem.SETTINGS -> {
                                     showSettingsScreen = true
@@ -597,6 +606,9 @@ fun CategoriesScreen(
                                 )
 
                                 if (continueMovies.isNotEmpty()) {
+                                    val movieRowCount = if (continueMovies.size <= 1) 1 else 2
+                                    val movieGridHeight = if (movieRowCount == 1) 220.dp else 440.dp
+
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -609,10 +621,10 @@ fun CategoriesScreen(
                                         )
 
                                         LazyHorizontalGrid(
-                                            rows = GridCells.Fixed(2),
+                                            rows = GridCells.Fixed(movieRowCount),
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(440.dp),
+                                                .height(movieGridHeight),
                                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                                             verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
@@ -640,6 +652,9 @@ fun CategoriesScreen(
                                 }
 
                                 if (continueSeries.isNotEmpty()) {
+                                    val seriesRowCount = if (continueSeries.size <= 1) 1 else 2
+                                    val seriesGridHeight = if (seriesRowCount == 1) 220.dp else 440.dp
+
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -652,10 +667,10 @@ fun CategoriesScreen(
                                         )
 
                                         LazyHorizontalGrid(
-                                            rows = GridCells.Fixed(2),
+                                            rows = GridCells.Fixed(seriesRowCount),
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(440.dp),
+                                                .height(seriesGridHeight),
                                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                                             verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
@@ -1997,6 +2012,7 @@ enum class TvSideNavItem {
     LIVE,
     VOD,
     SERIES,
+    REFRESH,
     SETTINGS
 }
 
@@ -2006,7 +2022,8 @@ private fun TvSideNavRail(
     onSelectItem: (TvSideNavItem) -> Unit,
     initialFocusRequester: FocusRequester? = null,
     contentFocusRequester: FocusRequester? = null,
-    hasFocusableContent: Boolean = false
+    hasFocusableContent: Boolean = false,
+    isRefreshing: Boolean = false
 ) {
     var isRailFocused by remember { mutableStateOf(false) }
 
@@ -2104,6 +2121,16 @@ private fun TvSideNavRail(
         Spacer(modifier = Modifier.weight(1f))
 
         TvSideNavButton(
+            label = if (isRefreshing) "Atualizando..." else "Atualizar",
+            icon = Icons.Default.Refresh,
+            isSelected = false,
+            isExpanded = isRailFocused,
+            isLoading = isRefreshing,
+            onClick = { onSelectItem(TvSideNavItem.REFRESH) },
+            modifier = navButtonModifier
+        )
+
+        TvSideNavButton(
             label = "Configurações",
             icon = Icons.Default.Settings,
             isSelected = selectedItem == TvSideNavItem.SETTINGS,
@@ -2121,7 +2148,8 @@ private fun TvSideNavButton(
     isSelected: Boolean,
     isExpanded: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLoading: Boolean = false
 ) {
     Box(
         modifier = modifier
@@ -2141,12 +2169,20 @@ private fun TvSideNavButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (isSelected) Color.White else Color(0xFFA0B0C4),
-                modifier = Modifier.size(22.dp)
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = TvSecondaryBlue,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = if (isSelected) Color.White else Color(0xFFA0B0C4),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
             if (isExpanded) {
                 Text(
                     text = label,

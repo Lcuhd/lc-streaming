@@ -267,18 +267,39 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
     /**
      * Atualização exclusiva de listas acionada a partir da tela de Configurações.
-     * Consulta unicamente o endpoint LC Admin (/device-lists) sem disparar requisições Xtream.
      */
     fun refreshDeviceListsFromSettings() {
+        refreshDeviceListsInternal(isFromHome = false)
+    }
+
+    /**
+     * Atualização global e leve da aplicação acionada a partir da Home TV/Wide.
+     * Re-sincroniza o LC Admin (/device-lists), atualiza categorias sob demanda
+     * e o carrossel 'Continuar assistindo'.
+     */
+    fun refreshAppFromHome() {
+        val catState = _uiState.value.contentCategoriesState
+        val isAnyCategoryLoading = catState?.isAnyLoading == true
+
+        if (_uiState.value.isLoadingLists || _uiState.value.isLoadingHomeContinue || isAnyCategoryLoading) {
+            Log.d(TAG, "[HOME_REFRESH_APP] Sincronização ignorada: atualização já em andamento")
+            return
+        }
+
+        Log.i(TAG, "[HOME_REFRESH_APP] Solicitando atualização global do app a partir da Home TV...")
+        refreshDeviceListsInternal(isFromHome = true)
+    }
+
+    private fun refreshDeviceListsInternal(isFromHome: Boolean) {
         if (_uiState.value.isLoadingLists) {
-            Log.d(TAG, "[SETTINGS_REFRESH_LISTS_START] Consulta ignorada: carregamento já em andamento")
+            Log.d(TAG, "[REFRESH_LISTS_START] Consulta ignorada: carregamento de listas já em andamento")
             return
         }
 
         var currentDeviceId = _uiState.value.deviceId
         var currentKey = _uiState.value.key
 
-        Log.i(TAG, "[SETTINGS_REFRESH_LISTS_START] Solicitando atualização de listas no LC Admin (/device-lists)...")
+        Log.i(TAG, "[REFRESH_LISTS_START] Solicitando atualização de listas no LC Admin (/device-lists)...")
         val startTime = SystemClock.elapsedRealtime()
 
         viewModelScope.launch {
@@ -289,7 +310,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             }
 
             if (currentDeviceId.isBlank() || currentKey.isBlank()) {
-                Log.w(TAG, "[SETTINGS_REFRESH_LISTS_ERROR] Device ID ou Key ausentes")
+                Log.w(TAG, "[REFRESH_LISTS_ERROR] Device ID ou Key ausentes")
                 _uiState.update { it.copy(toastFeedback = "Erro: Device ID não configurado") }
                 return@launch
             }
@@ -303,7 +324,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 is LcAdminListsResponse.Success -> {
                     Log.i(
                         TAG,
-                        "[SETTINGS_REFRESH_LISTS_RESPONSE] HTTP 200 - ${response.lists.size} listas recebidas em ${durationMs}ms"
+                        "[REFRESH_LISTS_RESPONSE] HTTP 200 - ${response.lists.size} listas recebidas em ${durationMs}ms"
                     )
 
                     val activeListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
@@ -318,6 +339,9 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                                 listId = activeList.id,
                                 listTitle = activeList.title,
                                 sourceName = activeList.sourceName,
+                                isLoadingLive = true,
+                                isLoadingVod = true,
+                                isLoadingSeries = true,
                                 isLiveLoaded = false,
                                 isVodLoaded = false,
                                 isSeriesLoaded = false,
@@ -342,7 +366,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                             selectedListId = activeList?.id ?: state.selectedListId,
                             contentCategoriesState = updatedCatState,
                             listsFeedbackMessage = response.displayMessage,
-                            toastFeedback = "Lista atualizada com sucesso"
+                            toastFeedback = if (isFromHome) "App e listas atualizados com sucesso" else "Listas atualizadas com sucesso"
                         )
                     }
 
@@ -351,11 +375,13 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         fetchCategoriesForList(activeList, CategoryType.VOD)
                         fetchCategoriesForList(activeList, CategoryType.SERIES)
                     }
+
+                    refreshHomeContinueWatching()
                 }
                 is LcAdminListsResponse.Error -> {
                     Log.w(
                         TAG,
-                        "[SETTINGS_REFRESH_LISTS_ERROR] Falha ao atualizar listas em ${durationMs}ms: ${response.displayMessage}"
+                        "[REFRESH_LISTS_ERROR] Falha ao atualizar listas em ${durationMs}ms: ${response.displayMessage}"
                     )
                     _uiState.update { state ->
                         state.copy(
