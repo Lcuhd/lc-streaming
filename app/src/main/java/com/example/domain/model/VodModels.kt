@@ -74,7 +74,8 @@ data class VodDetails(
     val releaseDate: String? = null,
     val duration: String? = null,
     val rating: String? = null,
-    val ageRating: String? = null
+    val ageRating: String? = null,
+    val containerExtension: String? = null
 )
 
 /**

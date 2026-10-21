@@ -471,20 +471,18 @@ class XtreamVodStreamsClient(
     ): VodDetailsLoadResult {
         return try {
             val rootObj = JSONObject(rawBody)
-            val infoObj = rootObj.optJSONObject("info") ?: rootObj.optJSONObject("movie_data") ?: rootObj
+            val movieDataObj = rootObj.optJSONObject("movie_data")
+            val infoObj = rootObj.optJSONObject("info") ?: movieDataObj ?: rootObj
 
             fun getSafeString(vararg keys: String): String? {
+                val targets = listOfNotNull(infoObj, movieDataObj, rootObj)
                 for (key in keys) {
-                    if (infoObj.has(key) && !infoObj.isNull(key)) {
-                        val v = infoObj.optString(key).trim()
-                        if (v.isNotBlank() && v != "null") {
-                            return v
-                        }
-                    }
-                    if (rootObj.has(key) && !rootObj.isNull(key)) {
-                        val v = rootObj.optString(key).trim()
-                        if (v.isNotBlank() && v != "null") {
-                            return v
+                    for (target in targets) {
+                        if (target.has(key) && !target.isNull(key)) {
+                            val v = target.optString(key).trim()
+                            if (v.isNotBlank() && v != "null") {
+                                return v
+                            }
                         }
                     }
                 }
@@ -501,6 +499,7 @@ class XtreamVodStreamsClient(
             val duration = getSafeString("duration", "duration_secs")
             val rating = getSafeString("rating")
             val ageRating = getSafeString("mpaa", "age_rating")
+            val rawExt = getSafeString("container_extension", "containerExtension", "extension")?.removePrefix(".")
 
             fun parseBackdropFromObject(obj: JSONObject): String? {
                 for (key in listOf("backdrop_path", "backdrop", "backdrops")) {
@@ -521,7 +520,9 @@ class XtreamVodStreamsClient(
                 return null
             }
 
-            val backdrop = parseBackdropFromObject(infoObj) ?: parseBackdropFromObject(rootObj)
+            val backdrop = parseBackdropFromObject(infoObj)
+                ?: (movieDataObj?.let { parseBackdropFromObject(it) })
+                ?: parseBackdropFromObject(rootObj)
 
             val details = VodDetails(
                 streamId = vodId,
@@ -535,7 +536,8 @@ class XtreamVodStreamsClient(
                 releaseDate = releaseDate,
                 duration = duration,
                 rating = rating,
-                ageRating = ageRating
+                ageRating = ageRating,
+                containerExtension = rawExt
             )
 
             VodDetailsLoadResult.Success(details)

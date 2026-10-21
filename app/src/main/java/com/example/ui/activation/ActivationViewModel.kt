@@ -1525,7 +1525,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
      * Inicia a reprodução real de um filme VOD selecionado pelo usuário,
      * buscando a posição salva caso exista progresso anterior.
      */
-    fun playVodMovie(movie: VodMovie) {
+    fun playVodMovie(movie: VodMovie, returnToHomeOnClose: Boolean = false) {
         val catState = _uiState.value.contentCategoriesState
         val listId = catState?.listId ?: _uiState.value.selectedListId
         val currentList = _uiState.value.lists.firstOrNull { it.id == listId }
@@ -1556,7 +1556,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
             Log.i(
                 TAG,
-                "Iniciando reprodução do filme VOD: '${movie.name}' (stream_id=${movie.streamId}, startPos=${startPositionMs}ms)"
+                "Iniciando reprodução do filme VOD: '${movie.name}' (stream_id=${movie.streamId}, startPos=${startPositionMs}ms, returnToHome=$returnToHomeOnClose)"
             )
 
             val channelModel = LiveStreamChannel(
@@ -1582,7 +1582,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         epgState = null,
                         startPositionMs = startPositionMs,
                         contentTitle = movie.name,
-                        contentImage = movie.streamIcon
+                        contentImage = movie.streamIcon,
+                        returnToHomeOnClose = returnToHomeOnClose
                     )
                 )
             }
@@ -1921,7 +1922,11 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     /**
      * Inicia a reprodução real de um episódio de série selecionado pelo usuário.
      */
-    fun playSeriesEpisode(episode: EpisodeItem, startPositionMs: Long = 0L) {
+    fun playSeriesEpisode(
+        episode: EpisodeItem,
+        startPositionMs: Long = 0L,
+        returnToHomeOnClose: Boolean = false
+    ) {
         val catState = _uiState.value.contentCategoriesState
         val details = catState?.seriesDetailsState?.details
         val seriesItem = catState?.seriesDetailsState?.seriesItem
@@ -1948,7 +1953,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
         Log.i(
             TAG,
-            "Iniciando reprodução de episódio de série: '$formattedTitle' (series_id=$sId, episode_id=${episode.id}, season=${episode.seasonNum}, ep=${episode.episodeNum}, start_pos=${startPositionMs}ms)"
+            "Iniciando reprodução de episódio de série: '$formattedTitle' (series_id=$sId, episode_id=${episode.id}, season=${episode.seasonNum}, ep=${episode.episodeNum}, start_pos=${startPositionMs}ms, returnToHome=$returnToHomeOnClose)"
         )
 
         val channelModel = LiveStreamChannel(
@@ -1978,7 +1983,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     episodeNum = episode.episodeNum,
                     episodeId = episode.id,
                     contentTitle = seriesTitle,
-                    contentImage = details?.cover ?: seriesItem?.cover
+                    contentImage = details?.cover ?: seriesItem?.cover,
+                    returnToHomeOnClose = returnToHomeOnClose
                 )
             )
         }
@@ -2015,11 +2021,12 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
         )
 
         if (nextEpisode != null) {
+            val returnHome = playerState.returnToHomeOnClose
             Log.i(
                 TAG,
-                "Avançando automaticamente: S${nextEpisode.seasonNum}E${nextEpisode.episodeNum}"
+                "Avançando automaticamente: S${nextEpisode.seasonNum}E${nextEpisode.episodeNum} (returnToHome=$returnHome)"
             )
-            playSeriesEpisode(nextEpisode, startPositionMs = 0L)
+            playSeriesEpisode(nextEpisode, startPositionMs = 0L, returnToHomeOnClose = returnHome)
         } else {
             Log.i(TAG, "Não há próximo episódio disponível")
         }
@@ -2718,15 +2725,165 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * Fecha a tela de reprodução e retorna exatamente à visualização de canais da categoria.
+     * Fecha a tela de reprodução e retorna para a visualização anterior.
+     * Se o player foi aberto pelo 'Continuar assistindo' da Home, retorna diretamente para a Home.
      */
     fun closeLivePlayer() {
-        Log.i(TAG, "Fechando player e retornando à visualização de canais da categoria")
+        val shouldReturnToHome = _uiState.value.livePlayerState?.returnToHomeOnClose == true
+        Log.i(TAG, "Fechando player (returnToHomeOnClose=$shouldReturnToHome)")
+
         _uiState.update { state ->
+            val currentCatState = state.contentCategoriesState
+            val updatedCatState = if (shouldReturnToHome && currentCatState != null) {
+                currentCatState.copy(
+                    seriesDetailsState = null,
+                    vodDetailsState = null,
+                    selectedCategoryForChannels = null
+                )
+            } else {
+                currentCatState
+            }
+
             state.copy(
                 currentSection = AppScreenSection.CONTENT_CATEGORIES,
+                contentCategoriesState = updatedCatState,
                 livePlayerState = null
             )
+        }
+    }
+
+    /**
+     * Inicia a retomada direta de um item de 'Continuar assistindo' selecionado na Home TV/Wide.
+     * Busca os detalhes pontuais do filme ou série no servidor sem carregar catálogos completos.
+     */
+    fun playHomeContinueItem(item: HomeContinueItem) {
+        val listId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+        val currentList = _uiState.value.lists.firstOrNull { it.id == listId }
+
+        if (currentList == null) {
+            Log.e(TAG, "Não foi possível retomar o item '${item.title}': lista ativa não encontrada")
+            _uiState.update { it.copy(toastFeedback = "Erro: lista ativa não encontrada") }
+            return
+        }
+
+        val cType = item.contentType.uppercase().trim()
+
+        if (cType == "VOD") {
+            Log.i(TAG, "Solicitando retomada de Filme da Home: '${item.title}' (vod_id=${item.contentId})")
+            viewModelScope.launch {
+                val result = repository.fetchVodDetailsOnline(currentList, item.contentId)
+
+                val activeListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+                if (activeListId != currentList.id) {
+                    Log.d(TAG, "Resultado de retomada da Home descartado: lista ativa mudou (${currentList.id} != $activeListId)")
+                    return@launch
+                }
+
+                val resolvedExtension = (result as? VodDetailsLoadResult.Success)?.details?.containerExtension
+
+                if (resolvedExtension.isNullOrBlank()) {
+                    Log.w(TAG, "Falha ao obter extensão do filme '${item.title}'")
+                    _uiState.update { it.copy(toastFeedback = "Não foi possível obter informações do filme") }
+                    return@launch
+                }
+
+                val movieModel = VodMovie(
+                    streamId = item.contentId,
+                    name = item.title,
+                    streamIcon = item.imageUrl,
+                    containerExtension = resolvedExtension,
+                    categoryId = ""
+                )
+
+                val prePlayActiveListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+                if (prePlayActiveListId != currentList.id) {
+                    Log.d(TAG, "Resultado de retomada VOD descartado antes de iniciar o player: lista ativa mudou")
+                    return@launch
+                }
+
+                playVodMovie(movieModel, returnToHomeOnClose = true)
+            }
+        } else if (cType == "SERIES") {
+            val seriesId = item.seriesId.ifBlank { item.contentId }
+            Log.i(TAG, "Solicitando retomada de Série da Home: '${item.title}' (series_id=$seriesId, episode_id=${item.episodeId})")
+
+            viewModelScope.launch {
+                val result = repository.fetchSeriesDetailsOnline(currentList, seriesId)
+
+                val activeListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+                if (activeListId != currentList.id) {
+                    Log.d(TAG, "Resultado de retomada da Home descartado: lista ativa mudou (${currentList.id} != $activeListId)")
+                    return@launch
+                }
+
+                if (result !is SeriesDetailsLoadResult.Success) {
+                    Log.w(TAG, "Falha ao obter detalhes da série '$seriesId'")
+                    _uiState.update { it.copy(toastFeedback = "Não foi possível obter informações da série") }
+                    return@launch
+                }
+
+                val details = result.details
+                var targetEpisode = com.example.domain.model.findEpisodeById(details, item.episodeId)
+
+                if (targetEpisode == null && item.seasonNum != null && item.episodeNum != null) {
+                    val seasonEps = details.episodesBySeason[item.seasonNum] ?: emptyList()
+                    targetEpisode = seasonEps.firstOrNull { it.episodeNum == item.episodeNum }
+                }
+
+                if (targetEpisode == null) {
+                    Log.w(TAG, "Episódio '${item.episodeId}' não encontrado para a série '$seriesId'")
+                    _uiState.update { it.copy(toastFeedback = "Episódio não encontrado") }
+                    return@launch
+                }
+
+                val seriesItem = SeriesItem(
+                    seriesId = seriesId,
+                    name = item.title,
+                    cover = item.imageUrl,
+                    categoryId = ""
+                )
+
+                val progressList = repository.getSeriesProgress(currentList.id, seriesId)
+
+                val postProgressActiveListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+                if (postProgressActiveListId != currentList.id) {
+                    Log.d(TAG, "Resultado de retomada de Série descartado após consultar progresso: lista ativa mudou")
+                    return@launch
+                }
+
+                _uiState.update { state ->
+                    val stateListId = state.contentCategoriesState?.listId ?: state.selectedListId
+                    if (stateListId != currentList.id) {
+                        Log.d(TAG, "Resultado de retomada de Série descartado no update: lista ativa mudou")
+                        return@update state
+                    }
+                    val current = state.contentCategoriesState ?: return@update state
+                    state.copy(
+                        contentCategoriesState = current.copy(
+                            seriesDetailsState = SeriesDetailsState(
+                                seriesItem = seriesItem,
+                                details = details,
+                                selectedSeasonNum = targetEpisode.seasonNum,
+                                isLoading = false,
+                                errorMessage = null,
+                                savedProgressList = progressList
+                            )
+                        )
+                    )
+                }
+
+                val prePlaySeriesActiveListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+                if (prePlaySeriesActiveListId != currentList.id) {
+                    Log.d(TAG, "Resultado de retomada de Série descartado antes de iniciar o player: lista ativa mudou")
+                    return@launch
+                }
+
+                playSeriesEpisode(
+                    episode = targetEpisode,
+                    startPositionMs = item.positionMs,
+                    returnToHomeOnClose = true
+                )
+            }
         }
     }
 

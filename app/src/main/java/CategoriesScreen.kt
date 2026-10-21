@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
@@ -75,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -134,6 +136,7 @@ fun CategoriesScreen(
     val categoriesState = uiState.contentCategoriesState
     val snackbarHostState = remember { SnackbarHostState() }
     val initialFocusRequester = remember { FocusRequester() }
+    val wideHomeContentFocusRequester = remember { FocusRequester() }
     var showDeviceInfoDialog by remember { mutableStateOf(false) }
     var showSettingsScreen by remember { mutableStateOf(false) }
     var isInnerCategoryExplorerOpen by remember { mutableStateOf(false) }
@@ -529,6 +532,7 @@ fun CategoriesScreen(
                 val continueSeries = remember(uiState.homeContinueItems) {
                     uiState.homeContinueItems.filter { it.contentType == "SERIES" }
                 }
+                val hasContent = continueMovies.isNotEmpty() || continueSeries.isNotEmpty()
 
                 Row(
                     modifier = Modifier.fillMaxSize()
@@ -536,6 +540,9 @@ fun CategoriesScreen(
                     // Menu Lateral Expansível da TV
                     TvSideNavRail(
                         selectedItem = TvSideNavItem.HOME,
+                        initialFocusRequester = initialFocusRequester,
+                        contentFocusRequester = wideHomeContentFocusRequester,
+                        hasFocusableContent = hasContent,
                         onSelectItem = { item ->
                             when (item) {
                                 TvSideNavItem.HOME -> { /* Já na Home */ }
@@ -577,7 +584,7 @@ fun CategoriesScreen(
                             onBackClick = { viewModel.closeContentCategories() }
                         )
 
-                        if (continueMovies.isNotEmpty() || continueSeries.isNotEmpty()) {
+                        if (hasContent) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -609,8 +616,24 @@ fun CategoriesScreen(
                                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                                             verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
-                                            items(continueMovies, key = { it.progressKey }) { item ->
-                                                WideHomeContinueCardItem(item = item)
+                                            itemsIndexed(continueMovies, key = { _, item -> item.progressKey }) { index, item ->
+                                                var cardModifier: Modifier = Modifier
+                                                if (index <= 1) {
+                                                    cardModifier = cardModifier.focusProperties { left = initialFocusRequester }
+                                                }
+                                                if (index == 0) {
+                                                    cardModifier = cardModifier.focusRequester(wideHomeContentFocusRequester)
+                                                }
+
+                                                WideHomeContinueCardItem(
+                                                    item = item,
+                                                    onClick = {
+                                                        executeWithParentalCheck("CHANNEL", "VOD", item.contentId, item.title) {
+                                                            viewModel.playHomeContinueItem(item)
+                                                        }
+                                                    },
+                                                    modifier = cardModifier
+                                                )
                                             }
                                         }
                                     }
@@ -636,8 +659,24 @@ fun CategoriesScreen(
                                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                                             verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
-                                            items(continueSeries, key = { it.progressKey }) { item ->
-                                                WideHomeContinueCardItem(item = item)
+                                            itemsIndexed(continueSeries, key = { _, item -> item.progressKey }) { index, item ->
+                                                var cardModifier: Modifier = Modifier
+                                                if (index <= 1) {
+                                                    cardModifier = cardModifier.focusProperties { left = initialFocusRequester }
+                                                }
+                                                if (continueMovies.isEmpty() && index == 0) {
+                                                    cardModifier = cardModifier.focusRequester(wideHomeContentFocusRequester)
+                                                }
+
+                                                WideHomeContinueCardItem(
+                                                    item = item,
+                                                    onClick = {
+                                                        executeWithParentalCheck("CATEGORY", "SERIES", item.contentId, item.title) {
+                                                            viewModel.playHomeContinueItem(item)
+                                                        }
+                                                    },
+                                                    modifier = cardModifier
+                                                )
                                             }
                                         }
                                     }
@@ -1964,7 +2003,10 @@ enum class TvSideNavItem {
 @Composable
 private fun TvSideNavRail(
     selectedItem: TvSideNavItem,
-    onSelectItem: (TvSideNavItem) -> Unit
+    onSelectItem: (TvSideNavItem) -> Unit,
+    initialFocusRequester: FocusRequester? = null,
+    contentFocusRequester: FocusRequester? = null,
+    hasFocusableContent: Boolean = false
 ) {
     var isRailFocused by remember { mutableStateOf(false) }
 
@@ -2013,12 +2055,23 @@ private fun TvSideNavRail(
             }
         }
 
+        val navButtonModifier = if (hasFocusableContent && contentFocusRequester != null) {
+            Modifier.focusProperties {
+                right = contentFocusRequester
+            }
+        } else Modifier
+
+        val homeButtonModifier = if (initialFocusRequester != null) {
+            navButtonModifier.focusRequester(initialFocusRequester)
+        } else navButtonModifier
+
         TvSideNavButton(
             label = "Início",
             icon = Icons.Default.Home,
             isSelected = selectedItem == TvSideNavItem.HOME,
             isExpanded = isRailFocused,
-            onClick = { onSelectItem(TvSideNavItem.HOME) }
+            onClick = { onSelectItem(TvSideNavItem.HOME) },
+            modifier = homeButtonModifier
         )
 
         TvSideNavButton(
@@ -2026,7 +2079,8 @@ private fun TvSideNavRail(
             icon = Icons.Default.Tv,
             isSelected = selectedItem == TvSideNavItem.LIVE,
             isExpanded = isRailFocused,
-            onClick = { onSelectItem(TvSideNavItem.LIVE) }
+            onClick = { onSelectItem(TvSideNavItem.LIVE) },
+            modifier = navButtonModifier
         )
 
         TvSideNavButton(
@@ -2034,7 +2088,8 @@ private fun TvSideNavRail(
             icon = Icons.Default.Movie,
             isSelected = selectedItem == TvSideNavItem.VOD,
             isExpanded = isRailFocused,
-            onClick = { onSelectItem(TvSideNavItem.VOD) }
+            onClick = { onSelectItem(TvSideNavItem.VOD) },
+            modifier = navButtonModifier
         )
 
         TvSideNavButton(
@@ -2042,7 +2097,8 @@ private fun TvSideNavRail(
             icon = Icons.Default.VideoLibrary,
             isSelected = selectedItem == TvSideNavItem.SERIES,
             isExpanded = isRailFocused,
-            onClick = { onSelectItem(TvSideNavItem.SERIES) }
+            onClick = { onSelectItem(TvSideNavItem.SERIES) },
+            modifier = navButtonModifier
         )
 
         Spacer(modifier = Modifier.weight(1f))
@@ -2052,7 +2108,8 @@ private fun TvSideNavRail(
             icon = Icons.Default.Settings,
             isSelected = selectedItem == TvSideNavItem.SETTINGS,
             isExpanded = isRailFocused,
-            onClick = { onSelectItem(TvSideNavItem.SETTINGS) }
+            onClick = { onSelectItem(TvSideNavItem.SETTINGS) },
+            modifier = navButtonModifier
         )
     }
 }
@@ -2063,10 +2120,11 @@ private fun TvSideNavButton(
     icon: ImageVector,
     isSelected: Boolean,
     isExpanded: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
             .clip(AppCorners.md)
@@ -2104,13 +2162,23 @@ private fun TvSideNavButton(
 }
 
 @Composable
-private fun WideHomeContinueCardItem(item: HomeContinueItem) {
+private fun WideHomeContinueCardItem(
+    item: HomeContinueItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .width(125.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(TvCardBackground)
             .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+            .tvFocusable(
+                shape = RoundedCornerShape(10.dp),
+                focusBorderColor = TvFocusBorder,
+                focusedScale = 1.05f,
+                onClick = onClick
+            )
             .padding(6.dp)
             .testTag("wide_home_continue_card_${item.progressKey}")
     ) {
