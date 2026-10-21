@@ -2,7 +2,9 @@
 package com.example.ui.categories
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -519,39 +522,131 @@ fun CategoriesScreen(
         } else {
             // HOME PORTA DE ENTRADA
             if (isWideLayout) {
-                // TV / WIDESCREEN HOME (MANTÉM O VISUAL APROVADO 100% PRESERVADO)
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = AppSpacing.xl, top = AppSpacing.md, end = AppSpacing.xl, bottom = AppSpacing.md),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // TV / WIDESCREEN HOME NOVA COM MENU LATERAL E SEÇÕES CONTINUAR ASSISTINDO
+                val continueMovies = remember(uiState.homeContinueItems) {
+                    uiState.homeContinueItems.filter { it.contentType == "VOD" }
+                }
+                val continueSeries = remember(uiState.homeContinueItems) {
+                    uiState.homeContinueItems.filter { it.contentType == "SERIES" }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    CompactCategoriesHeaderBar(
-                        listTitle = categoriesState.listTitle,
-                        sourceName = categoriesState.sourceName,
-                        isConnected = categoriesState.liveError == null || categoriesState.vodError == null || categoriesState.seriesError == null,
-                        onBackClick = { viewModel.closeContentCategories() }
+                    // Menu Lateral Expansível da TV
+                    TvSideNavRail(
+                        selectedItem = TvSideNavItem.HOME,
+                        onSelectItem = { item ->
+                            when (item) {
+                                TvSideNavItem.HOME -> { /* Já na Home */ }
+                                TvSideNavItem.LIVE -> {
+                                    viewModel.selectCategoryTab(CategoryType.LIVE)
+                                    viewModel.ensureCategoriesLoaded(CategoryType.LIVE)
+                                    pendingDirectOpen = CategoryType.LIVE
+                                }
+                                TvSideNavItem.VOD -> {
+                                    viewModel.selectCategoryTab(CategoryType.VOD)
+                                    viewModel.ensureCategoriesLoaded(CategoryType.VOD)
+                                    pendingDirectOpen = CategoryType.VOD
+                                }
+                                TvSideNavItem.SERIES -> {
+                                    viewModel.selectCategoryTab(CategoryType.SERIES)
+                                    viewModel.ensureCategoriesLoaded(CategoryType.SERIES)
+                                    pendingDirectOpen = CategoryType.SERIES
+                                }
+                                TvSideNavItem.SETTINGS -> {
+                                    showSettingsScreen = true
+                                }
+                            }
+                        }
                     )
 
-                    Box(
+                    // Área de Conteúdo Principal da TV Home (Lado Direito)
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = AppSpacing.lg, top = AppSpacing.md, end = AppSpacing.xl, bottom = AppSpacing.md),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
                     ) {
-                        CategoriesHubPanel(
-                            selectedTab = categoriesState.selectedTab,
-                            onSelectTab = { categoryType ->
-                                viewModel.selectCategoryTab(categoryType)
-                                viewModel.ensureCategoriesLoaded(categoryType)
-                                pendingDirectOpen = categoryType
-                            },
-                            onInfoClick = { showSettingsScreen = true },
-                            initialFocusRequester = initialFocusRequester
+                        CompactCategoriesHeaderBar(
+                            listTitle = categoriesState.listTitle,
+                            sourceName = categoriesState.sourceName,
+                            isConnected = categoriesState.liveError == null || categoriesState.vodError == null || categoriesState.seriesError == null,
+                            onBackClick = { viewModel.closeContentCategories() }
                         )
-                    }
 
-                    DiscreetFooterBar(deviceId = uiState.deviceId)
+                        if (continueMovies.isNotEmpty() || continueSeries.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Text(
+                                    text = "Continuar assistindo",
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+
+                                if (continueMovies.isNotEmpty()) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Filmes",
+                                            color = TvTextSecondary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        LazyHorizontalGrid(
+                                            rows = GridCells.Fixed(2),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(440.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            items(continueMovies, key = { it.progressKey }) { item ->
+                                                WideHomeContinueCardItem(item = item)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (continueSeries.isNotEmpty()) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Séries",
+                                            color = TvTextSecondary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        LazyHorizontalGrid(
+                                            rows = GridCells.Fixed(2),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(440.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            items(continueSeries, key = { it.progressKey }) { item ->
+                                                WideHomeContinueCardItem(item = item)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        DiscreetFooterBar(deviceId = uiState.deviceId)
+                    }
                 }
             } else {
                 // MOBILE HOME: ÁREA DE CONTEÚDO COM SEÇÕES SEPARADAS
@@ -1854,6 +1949,230 @@ private fun MobileHomeContinueCardItem(item: HomeContinueItem) {
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             lineHeight = 14.sp
+        )
+    }
+}
+
+enum class TvSideNavItem {
+    HOME,
+    LIVE,
+    VOD,
+    SERIES,
+    SETTINGS
+}
+
+@Composable
+private fun TvSideNavRail(
+    selectedItem: TvSideNavItem,
+    onSelectItem: (TvSideNavItem) -> Unit
+) {
+    var isRailFocused by remember { mutableStateOf(false) }
+
+    val widthAnimated by animateDpAsState(
+        targetValue = if (isRailFocused) 200.dp else 68.dp,
+        label = "SideNavWidthAnimation"
+    )
+
+    Column(
+        modifier = Modifier
+            .width(widthAnimated)
+            .fillMaxHeight()
+            .onFocusChanged { focusState ->
+                isRailFocused = focusState.hasFocus
+            }
+            .focusGroup()
+            .background(TvCardBackground)
+            .border(width = 1.dp, color = TvSurfaceVariant, shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp))
+            .padding(vertical = AppSpacing.lg, horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Logotipo / Marca LC Player no topo do menu lateral
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp)
+        ) {
+            Text(
+                text = "LC",
+                color = TvSecondaryBlue,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black
+            )
+            if (isRailFocused) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Player",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+        }
+
+        TvSideNavButton(
+            label = "Início",
+            icon = Icons.Default.Home,
+            isSelected = selectedItem == TvSideNavItem.HOME,
+            isExpanded = isRailFocused,
+            onClick = { onSelectItem(TvSideNavItem.HOME) }
+        )
+
+        TvSideNavButton(
+            label = "TV Online",
+            icon = Icons.Default.Tv,
+            isSelected = selectedItem == TvSideNavItem.LIVE,
+            isExpanded = isRailFocused,
+            onClick = { onSelectItem(TvSideNavItem.LIVE) }
+        )
+
+        TvSideNavButton(
+            label = "Filmes",
+            icon = Icons.Default.Movie,
+            isSelected = selectedItem == TvSideNavItem.VOD,
+            isExpanded = isRailFocused,
+            onClick = { onSelectItem(TvSideNavItem.VOD) }
+        )
+
+        TvSideNavButton(
+            label = "Séries",
+            icon = Icons.Default.VideoLibrary,
+            isSelected = selectedItem == TvSideNavItem.SERIES,
+            isExpanded = isRailFocused,
+            onClick = { onSelectItem(TvSideNavItem.SERIES) }
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        TvSideNavButton(
+            label = "Configurações",
+            icon = Icons.Default.Settings,
+            isSelected = selectedItem == TvSideNavItem.SETTINGS,
+            isExpanded = isRailFocused,
+            onClick = { onSelectItem(TvSideNavItem.SETTINGS) }
+        )
+    }
+}
+
+@Composable
+private fun TvSideNavButton(
+    label: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    isExpanded: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(AppCorners.md)
+            .background(if (isSelected) TvPrimaryBlue else Color.Transparent)
+            .tvFocusable(
+                shape = AppCorners.md,
+                focusBorderColor = Color.White,
+                onClick = onClick
+            )
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (isSelected) Color.White else Color(0xFFA0B0C4),
+                modifier = Modifier.size(22.dp)
+            )
+            if (isExpanded) {
+                Text(
+                    text = label,
+                    color = if (isSelected) Color.White else Color(0xFFA0B0C4),
+                    fontSize = 13.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WideHomeContinueCardItem(item: HomeContinueItem) {
+    Column(
+        modifier = Modifier
+            .width(125.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(TvCardBackground)
+            .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+            .padding(6.dp)
+            .testTag("wide_home_continue_card_${item.progressKey}")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(165.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF142033)),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = item.imageUrl,
+                contentDescription = "Capa de ${item.title}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = painterResource(id = R.drawable.placeholder_poster),
+                error = painterResource(id = R.drawable.placeholder_poster)
+            )
+
+            if (item.contentType == "SERIES" && item.seasonNum != null && item.episodeNum != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xCC050810))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = "T${item.seasonNum} • E${item.episodeNum}",
+                        color = TvSecondaryBlue,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        LinearProgressIndicator(
+            progress = { item.progressFraction },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = TvSecondaryBlue,
+            trackColor = Color(0x33FFFFFF)
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = item.title,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 15.sp
         )
     }
 }
