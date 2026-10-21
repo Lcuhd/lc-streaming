@@ -19,10 +19,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LinearProgressIndicator
+import coil.compose.AsyncImage
+import com.example.ui.activation.HomeContinueItem
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -508,39 +517,135 @@ fun CategoriesScreen(
                 DiscreetFooterBar(deviceId = uiState.deviceId)
             }
         } else {
-            // HOME PORTA DE ENTRADA (MANTÉM O VISUAL APROVADO 100% PRESERVADO)
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = AppSpacing.xl, top = AppSpacing.md, end = AppSpacing.xl, bottom = AppSpacing.md),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                CompactCategoriesHeaderBar(
-                    listTitle = categoriesState.listTitle,
-                    sourceName = categoriesState.sourceName,
-                    isConnected = categoriesState.liveError == null || categoriesState.vodError == null || categoriesState.seriesError == null,
-                    onBackClick = { viewModel.closeContentCategories() }
-                )
-
-                Box(
+            // HOME PORTA DE ENTRADA
+            if (isWideLayout) {
+                // TV / WIDESCREEN HOME (MANTÉM O VISUAL APROVADO 100% PRESERVADO)
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
+                        .fillMaxSize()
+                        .padding(start = AppSpacing.xl, top = AppSpacing.md, end = AppSpacing.xl, bottom = AppSpacing.md),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    CategoriesHubPanel(
-                        selectedTab = categoriesState.selectedTab,
-                        onSelectTab = { categoryType ->
-                            viewModel.selectCategoryTab(categoryType)
-                            viewModel.ensureCategoriesLoaded(categoryType)
-                            pendingDirectOpen = categoryType
-                        },
-                        onInfoClick = { showSettingsScreen = true },
-                        initialFocusRequester = initialFocusRequester
+                    CompactCategoriesHeaderBar(
+                        listTitle = categoriesState.listTitle,
+                        sourceName = categoriesState.sourceName,
+                        isConnected = categoriesState.liveError == null || categoriesState.vodError == null || categoriesState.seriesError == null,
+                        onBackClick = { viewModel.closeContentCategories() }
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CategoriesHubPanel(
+                            selectedTab = categoriesState.selectedTab,
+                            onSelectTab = { categoryType ->
+                                viewModel.selectCategoryTab(categoryType)
+                                viewModel.ensureCategoriesLoaded(categoryType)
+                                pendingDirectOpen = categoryType
+                            },
+                            onInfoClick = { showSettingsScreen = true },
+                            initialFocusRequester = initialFocusRequester
+                        )
+                    }
+
+                    DiscreetFooterBar(deviceId = uiState.deviceId)
+                }
+            } else {
+                // MOBILE HOME: ÁREA DE CONTEÚDO COM SEÇÕES SEPARADAS
+                val continueMovies = remember(uiState.homeContinueItems) {
+                    uiState.homeContinueItems.filter { it.contentType == "VOD" }
+                }
+                val continueSeries = remember(uiState.homeContinueItems) {
+                    uiState.homeContinueItems.filter { it.contentType == "SERIES" }
                 }
 
-                DiscreetFooterBar(deviceId = uiState.deviceId)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CompactCategoriesHeaderBar(
+                        listTitle = categoriesState.listTitle,
+                        sourceName = categoriesState.sourceName,
+                        isConnected = categoriesState.liveError == null || categoriesState.vodError == null || categoriesState.seriesError == null,
+                        onBackClick = { viewModel.closeContentCategories() }
+                    )
+
+                    if (continueMovies.isNotEmpty() || continueSeries.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Text(
+                                text = "Continuar assistindo",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black
+                            )
+
+                            if (continueMovies.isNotEmpty()) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Filmes",
+                                        color = TvTextSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    LazyHorizontalGrid(
+                                        rows = GridCells.Fixed(2),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(410.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        items(continueMovies, key = { it.progressKey }) { item ->
+                                            MobileHomeContinueCardItem(item = item)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (continueSeries.isNotEmpty()) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Séries",
+                                        color = TvTextSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    LazyHorizontalGrid(
+                                        rows = GridCells.Fixed(2),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(410.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        items(continueSeries, key = { it.progressKey }) { item ->
+                                            MobileHomeContinueCardItem(item = item)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    DiscreetFooterBar(deviceId = uiState.deviceId)
+                }
             }
         }
 
@@ -797,13 +902,13 @@ private fun MobileNavItem(
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (isSelected) Color(0xFF0084FF) else Color(0xFF8A99AD),
+            tint = if (isSelected) Color(0xFF0084FF) else Color(0xFFA0B0C4),
             modifier = Modifier.size(22.dp)
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = label,
-            color = if (isSelected) Color(0xFF0084FF) else Color(0xFF8A99AD),
+            color = if (isSelected) Color(0xFF0084FF) else Color(0xFFA0B0C4),
             fontSize = 11.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1
@@ -1675,6 +1780,80 @@ private fun InfoRow(label: String, value: String) {
             color = Color.White,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun MobileHomeContinueCardItem(item: HomeContinueItem) {
+    Column(
+        modifier = Modifier
+            .width(110.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(TvCardBackground)
+            .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+            .padding(6.dp)
+            .testTag("home_continue_card_${item.progressKey}")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF142033)),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = item.imageUrl,
+                contentDescription = "Capa de ${item.title}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = painterResource(id = R.drawable.placeholder_poster),
+                error = painterResource(id = R.drawable.placeholder_poster)
+            )
+
+            if (item.contentType == "SERIES" && item.seasonNum != null && item.episodeNum != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xCC050810))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = "T${item.seasonNum} • E${item.episodeNum}",
+                        color = TvSecondaryBlue,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        LinearProgressIndicator(
+            progress = { item.progressFraction },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = TvSecondaryBlue,
+            trackColor = Color(0x33FFFFFF)
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = item.title,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 14.sp
         )
     }
 }

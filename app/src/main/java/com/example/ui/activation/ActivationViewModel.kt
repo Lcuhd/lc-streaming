@@ -2147,7 +2147,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
 
         viewModelScope.launch {
             try {
-                val rawList = repository.getRecentInProgressForList(listId, limit = 12)
+                val rawList = repository.getRecentInProgressForList(listId, limit = 50)
 
                 val validItems = rawList.mapNotNull { item ->
                     val cType = item.contentType?.trim()?.uppercase()
@@ -2184,11 +2184,15 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
 
+                val vodItems = validItems.filter { it.contentType == "VOD" }.take(12)
+                val seriesItems = validItems.filter { it.contentType == "SERIES" }.take(12)
+                val combinedItems = vodItems + seriesItems
+
                 _uiState.update { state ->
                     val currentActiveListId = state.contentCategoriesState?.listId ?: state.selectedListId
                     if (currentActiveListId == listId) {
                         state.copy(
-                            homeContinueItems = validItems,
+                            homeContinueItems = combinedItems,
                             isLoadingHomeContinue = false
                         )
                     } else {
