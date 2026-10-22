@@ -811,7 +811,7 @@ private fun WideTwoPaneSettingsView(
                             )
                         }
 
-                        if (currentList != null && !currentList.expiresAt.isNullOrBlank()) {
+                        if (currentList != null) {
                             SettingsAccountInfoRow(
                                 label = stringResource(R.string.settings_account_validity),
                                 value = currentList.formattedExpiration
@@ -1120,7 +1120,7 @@ private fun MobileSettingsView(
                         )
                     }
 
-                    if (currentList != null && !currentList.expiresAt.isNullOrBlank()) {
+                    if (currentList != null) {
                         SettingsAccountInfoRow(
                             label = stringResource(R.string.settings_account_validity),
                             value = currentList.formattedExpiration
