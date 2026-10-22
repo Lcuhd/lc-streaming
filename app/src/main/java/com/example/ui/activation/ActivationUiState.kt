@@ -42,6 +42,7 @@ data class ActivationUiState(
     val toastFeedback: String? = null,
     val lastFeedbackMessage: String? = null,
     val showSystemInfoModal: Boolean = false,
+    val isResolvingStartupRoute: Boolean = true,
 
     // Seção atual da aplicação (Identificação, Minhas Listas, Categorias ou Player de TV)
     val currentSection: AppScreenSection = AppScreenSection.ACTIVATION,

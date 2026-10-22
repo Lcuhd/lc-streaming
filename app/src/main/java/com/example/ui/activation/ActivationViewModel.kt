@@ -101,6 +101,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
             // Se o aparelho já estiver ativo no banco local, carrega as listas previamente
             if (credentials.status == ActivationStatus.ACTIVE) {
                 fetchDeviceLists(navigateToSectionIfActive = true)
+            } else {
+                _uiState.update { it.copy(isResolvingStartupRoute = false) }
             }
         }
     }
@@ -209,8 +211,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     val isDeviceActive = (response.deviceStatus == ActivationStatus.ACTIVE) ||
                             (_uiState.value.status == ActivationStatus.ACTIVE)
 
-                    val shouldNavigate = isDeviceActive && !userManualLoggedOut &&
-                            (navigateToSectionIfActive || currentSec == AppScreenSection.MY_LISTS || currentSec == AppScreenSection.ACTIVATION)
+                    val shouldNavigate = isDeviceActive && !userManualLoggedOut && navigateToSectionIfActive
 
                     if (shouldNavigate && activeLists.isNotEmpty()) {
                         if (activeLists.size == 1) {
@@ -226,6 +227,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                                 )
                             }
                             openContentCategories(singleActiveList)
+                            _uiState.update { it.copy(isResolvingStartupRoute = false) }
                         } else {
                             Log.i(TAG, "Múltiplas listas ativas encontradas (${activeLists.size}). Abrindo seletor de listas.")
                             _uiState.update { state ->
@@ -235,7 +237,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                                     lists = response.lists,
                                     listsFeedbackMessage = response.displayMessage,
                                     isAutoSelectedList = false,
-                                    currentSection = AppScreenSection.MY_LISTS
+                                    currentSection = AppScreenSection.MY_LISTS,
+                                    isResolvingStartupRoute = false
                                 )
                             }
                         }
@@ -246,7 +249,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                                 status = response.deviceStatus,
                                 lists = response.lists,
                                 listsFeedbackMessage = response.displayMessage,
-                                isAutoSelectedList = false
+                                isAutoSelectedList = false,
+                                isResolvingStartupRoute = false
                             )
                         }
                     }
@@ -257,7 +261,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         state.copy(
                             isLoadingLists = false,
                             listsFeedbackMessage = response.displayMessage,
-                            toastFeedback = response.displayMessage
+                            toastFeedback = response.displayMessage,
+                            isResolvingStartupRoute = false
                         )
                     }
                 }

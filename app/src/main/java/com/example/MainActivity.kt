@@ -5,13 +5,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.AppSettingsManager
 import com.example.ui.activation.ActivationScreen
@@ -42,51 +47,64 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     contentWindowInsets = WindowInsets.safeDrawing
                 ) { innerPadding ->
-                    when (uiState.currentSection) {
-                        AppScreenSection.ACTIVATION -> {
-                            ActivationScreen(
-                                viewModel = activationViewModel,
-                                modifier = Modifier.padding(innerPadding)
+                    if (uiState.isResolvingStartupRoute) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF050810)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = Color(0xFF0084FF)
                             )
                         }
-                        AppScreenSection.MY_LISTS -> {
-                            DeviceListsScreen(
-                                viewModel = activationViewModel,
-                                modifier = Modifier.padding(innerPadding)
-                            )
-                        }
-                        AppScreenSection.CONTENT_CATEGORIES -> {
-                            CategoriesScreen(
-                                viewModel = activationViewModel,
-                                modifier = Modifier.padding(innerPadding)
-                            )
-                        }
-                        AppScreenSection.LIVE_PLAYER -> {
-                            val playerState = uiState.livePlayerState
-                            if (playerState != null) {
-                                val liveChannels = uiState.contentCategoriesState?.liveStreamsState?.channels ?: emptyList()
-                                LivePlayerScreen(
-                                    playerState = playerState,
-                                    categoryChannels = liveChannels,
-                                    onBackClick = { activationViewModel.closeLivePlayer() },
-                                    onPreviousChannel = { activationViewModel.playPreviousChannel() },
-                                    onNextChannel = { activationViewModel.playNextChannel() },
-                                    onSelectChannel = { channel -> activationViewModel.playLiveChannel(channel) },
-                                    onSaveProgress = { pos, dur, completed ->
-                                        activationViewModel.savePlayerEpisodeProgress(pos, dur, completed)
-                                    },
-                                    onEpisodeEnded = {
-                                        activationViewModel.playNextSeriesEpisodeAutomatically()
-                                    },
-                                    onPlayerStateChange = { isPlaying, isBuffering, error ->
-                                        activationViewModel.updatePlayerState(isPlaying, isBuffering, error)
-                                    },
-                                    onRetryFallbackFormat = { fallbackExtension ->
-                                        activationViewModel.retryPlaybackWithAlternativeFormat(fallbackExtension)
-                                    }
+                    } else {
+                        when (uiState.currentSection) {
+                            AppScreenSection.ACTIVATION -> {
+                                ActivationScreen(
+                                    viewModel = activationViewModel,
+                                    modifier = Modifier.padding(innerPadding)
                                 )
-                            } else {
-                                activationViewModel.closeLivePlayer()
+                            }
+                            AppScreenSection.MY_LISTS -> {
+                                DeviceListsScreen(
+                                    viewModel = activationViewModel,
+                                    modifier = Modifier.padding(innerPadding)
+                                )
+                            }
+                            AppScreenSection.CONTENT_CATEGORIES -> {
+                                CategoriesScreen(
+                                    viewModel = activationViewModel,
+                                    modifier = Modifier.padding(innerPadding)
+                                )
+                            }
+                            AppScreenSection.LIVE_PLAYER -> {
+                                val playerState = uiState.livePlayerState
+                                if (playerState != null) {
+                                    val liveChannels = uiState.contentCategoriesState?.liveStreamsState?.channels ?: emptyList()
+                                    LivePlayerScreen(
+                                        playerState = playerState,
+                                        categoryChannels = liveChannels,
+                                        onBackClick = { activationViewModel.closeLivePlayer() },
+                                        onPreviousChannel = { activationViewModel.playPreviousChannel() },
+                                        onNextChannel = { activationViewModel.playNextChannel() },
+                                        onSelectChannel = { channel -> activationViewModel.playLiveChannel(channel) },
+                                        onSaveProgress = { pos, dur, completed ->
+                                            activationViewModel.savePlayerEpisodeProgress(pos, dur, completed)
+                                        },
+                                        onEpisodeEnded = {
+                                            activationViewModel.playNextSeriesEpisodeAutomatically()
+                                        },
+                                        onPlayerStateChange = { isPlaying, isBuffering, error ->
+                                            activationViewModel.updatePlayerState(isPlaying, isBuffering, error)
+                                        },
+                                        onRetryFallbackFormat = { fallbackExtension ->
+                                            activationViewModel.retryPlaybackWithAlternativeFormat(fallbackExtension)
+                                        }
+                                    )
+                                } else {
+                                    activationViewModel.closeLivePlayer()
+                                }
                             }
                         }
                     }
