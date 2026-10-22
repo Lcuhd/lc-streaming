@@ -23,8 +23,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.TvFocusBorder
@@ -113,9 +115,10 @@ fun Modifier.tvFocusable(
             if (onClick != null && enabled) {
                 Modifier
                     .onKeyEvent { keyEvent ->
-                        if (keyEvent.key == Key.DirectionCenter ||
-                            keyEvent.key == Key.Enter ||
-                            keyEvent.key == Key.NumPadEnter
+                        if (keyEvent.type == KeyEventType.KeyUp &&
+                            (keyEvent.key == Key.DirectionCenter ||
+                             keyEvent.key == Key.Enter ||
+                             keyEvent.key == Key.NumPadEnter)
                         ) {
                             onClick()
                             true
