@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
@@ -526,17 +527,27 @@ fun CategoriesScreen(
         } else {
             // HOME PORTA DE ENTRADA
             if (isWideLayout) {
-                // TV / WIDESCREEN HOME NOVA COM MENU LATERAL E SEÇÕES CONTINUAR ASSISTINDO
+                // TV / WIDESCREEN HOME NOVA COM MENU LATERAL E SEÇÕES CONTINUAR ASSISTINDO / RECENTES
+                val recentItems = uiState.homeRecentItems
                 val continueMovies = remember(uiState.homeContinueItems) {
                     uiState.homeContinueItems.filter { it.contentType == "VOD" }
                 }
                 val continueSeries = remember(uiState.homeContinueItems) {
                     uiState.homeContinueItems.filter { it.contentType == "SERIES" }
                 }
-                val hasContent = continueMovies.isNotEmpty() || continueSeries.isNotEmpty()
+                val hasContent = recentItems.isNotEmpty() ||
+                    continueMovies.isNotEmpty() ||
+                    continueSeries.isNotEmpty()
                 val isGlobalRefreshing = uiState.isLoadingLists ||
                     uiState.isLoadingHomeContinue ||
+                    uiState.isLoadingHomeRecent ||
                     categoriesState?.isAnyLoading == true
+
+                LaunchedEffect(categoriesState.listId) {
+                    if (uiState.homeRecentItems.isEmpty() && !uiState.isLoadingHomeRecent) {
+                        viewModel.refreshHomeRecent()
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxSize()
@@ -594,7 +605,60 @@ fun CategoriesScreen(
                             onBackClick = { viewModel.closeContentCategories() }
                         )
 
-                        if (hasContent) {
+                        // SEÇÃO RECENTES (TV / WIDE)
+                        if (recentItems.isNotEmpty() || uiState.isLoadingHomeRecent) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "Recentes",
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+
+                                if (uiState.isLoadingHomeRecent && recentItems.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(165.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            color = TvSecondaryBlue,
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                } else if (recentItems.isNotEmpty()) {
+                                    LazyRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        itemsIndexed(
+                                            recentItems,
+                                            key = { _, item -> "${item.contentType}_${item.contentId}" }
+                                        ) { index, item ->
+                                            var cardModifier: Modifier = Modifier
+                                            if (index == 0) {
+                                                cardModifier = cardModifier
+                                                    .focusProperties { left = initialFocusRequester }
+                                                    .focusRequester(wideHomeContentFocusRequester)
+                                            }
+
+                                            WideHomeRecentCardItem(
+                                                item = item,
+                                                modifier = cardModifier
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // SEÇÃO CONTINUAR ASSISTINDO (TV / WIDE)
+                        if (continueMovies.isNotEmpty() || continueSeries.isNotEmpty()) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -634,7 +698,7 @@ fun CategoriesScreen(
                                                 if (index <= 1) {
                                                     cardModifier = cardModifier.focusProperties { left = initialFocusRequester }
                                                 }
-                                                if (index == 0) {
+                                                if (recentItems.isEmpty() && index == 0) {
                                                     cardModifier = cardModifier.focusRequester(wideHomeContentFocusRequester)
                                                 }
 
@@ -680,7 +744,7 @@ fun CategoriesScreen(
                                                 if (index <= 1) {
                                                     cardModifier = cardModifier.focusProperties { left = initialFocusRequester }
                                                 }
-                                                if (continueMovies.isEmpty() && index == 0) {
+                                                if (recentItems.isEmpty() && continueMovies.isEmpty() && index == 0) {
                                                     cardModifier = cardModifier.focusRequester(wideHomeContentFocusRequester)
                                                 }
 
@@ -2301,6 +2365,75 @@ private fun TvSideNavButton(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun WideHomeRecentCardItem(
+    item: HomeRecentItem,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .width(125.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(TvCardBackground)
+            .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+            .tvFocusable(
+                shape = RoundedCornerShape(10.dp),
+                focusBorderColor = TvFocusBorder,
+                focusedScale = 1.05f,
+                onClick = {}
+            )
+            .padding(6.dp)
+            .testTag("wide_home_recent_card_${item.contentType}_${item.contentId}")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(165.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF142033)),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = item.imageUrl,
+                contentDescription = "Capa de ${item.title}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = painterResource(id = R.drawable.placeholder_poster),
+                error = painterResource(id = R.drawable.placeholder_poster)
+            )
+
+            val badgeLabel = if (item.contentType == "VOD") "FILME" else "SÉRIE"
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xDD0084FF))
+                    .padding(horizontal = 5.dp, vertical = 1.5.dp)
+            ) {
+                Text(
+                    text = badgeLabel,
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = item.title,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 15.sp
+        )
     }
 }
 
