@@ -340,6 +340,9 @@ class XtreamSeriesClient(
         val categoryId = obj.optString("category_id").trim()
         val runTime = obj.optString("episode_run_time").trim().ifBlank { null }
 
+        val added = obj.optString("added").trim().ifBlank { null }
+        val lastModified = obj.optString("last_modified").trim().ifBlank { null }
+
         return SeriesItem(
             seriesId = seriesId,
             name = name,
@@ -350,7 +353,9 @@ class XtreamSeriesClient(
             genre = genre,
             releaseDate = releaseDate,
             categoryId = categoryId,
-            episodeRunTime = runTime
+            episodeRunTime = runTime,
+            added = added,
+            lastModified = lastModified
         )
     }
 

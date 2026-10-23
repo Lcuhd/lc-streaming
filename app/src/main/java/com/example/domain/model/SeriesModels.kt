@@ -16,7 +16,9 @@ data class SeriesItem(
     val releaseDate: String? = null,
     val categoryId: String,
     val backdropPath: List<String> = emptyList(),
-    val episodeRunTime: String? = null
+    val episodeRunTime: String? = null,
+    val added: String? = null,
+    val lastModified: String? = null
 )
 
 /**

@@ -42,6 +42,7 @@ import com.example.domain.model.VodStreamsLoadResult
 import com.example.domain.model.VodStreamsState
 import com.example.domain.model.XtreamCategory
 import com.example.util.XtreamStreamUrlBuilder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,6 +71,7 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
     private val xtreamEpgClient = XtreamEpgClient()
     private val epgCache = ConcurrentHashMap<String, Pair<Long, ShortEpgState>>()
     private var epgFetchJob: Job? = null
+    private var homeRecentJob: Job? = null
     private var currentlyFocusedStreamId: String? = null
 
     private val _uiState = MutableStateFlow(ActivationUiState())
@@ -622,6 +624,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 isAutoSelectedList = false,
                 homeContinueItems = emptyList(),
                 isLoadingHomeContinue = false,
+                homeRecentItems = emptyList(),
+                isLoadingHomeRecent = false,
                 currentSection = AppScreenSection.MY_LISTS,
                 toastFeedback = "Sessão da lista encerrada"
             )
@@ -663,6 +667,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 currentSection = AppScreenSection.CONTENT_CATEGORIES,
                 homeContinueItems = emptyList(),
                 isLoadingHomeContinue = false,
+                homeRecentItems = emptyList(),
+                isLoadingHomeRecent = false,
                 contentCategoriesState = ListContentCategoriesState(
                     listId = list.id,
                     listTitle = list.title,
@@ -2244,6 +2250,131 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     val currentActiveListId = state.contentCategoriesState?.listId ?: state.selectedListId
                     if (currentActiveListId == listId) {
                         state.copy(isLoadingHomeContinue = false)
+                    } else {
+                        state
+                    }
+                }
+            }
+        }
+    }
+
+    private fun normalizeRecentTimestamp(raw: String?): Long? {
+        val value = raw?.trim()?.toLongOrNull() ?: return null
+        if (value <= 0L) return null
+
+        return if (value > 10_000_000_000L) {
+            value / 1000L
+        } else {
+            value
+        }
+    }
+
+    /**
+     * Carrega e combina os conteúdos VOD e Séries recentes do servidor.
+     */
+    fun refreshHomeRecent() {
+        val listId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+        val currentList = _uiState.value.lists.firstOrNull { it.id == listId }
+
+        if (currentList == null) {
+            _uiState.update {
+                it.copy(
+                    homeRecentItems = emptyList(),
+                    isLoadingHomeRecent = false
+                )
+            }
+            return
+        }
+
+        homeRecentJob?.cancel()
+
+        _uiState.update {
+            it.copy(isLoadingHomeRecent = true)
+        }
+
+        homeRecentJob = viewModelScope.launch {
+            try {
+                val syntheticVodCategory = XtreamCategory(
+                    categoryId = "",
+                    categoryName = "Todos",
+                    type = CategoryType.VOD
+                )
+                val syntheticSeriesCategory = XtreamCategory(
+                    categoryId = "",
+                    categoryName = "Todos",
+                    type = CategoryType.SERIES
+                )
+
+                val vodResult = repository.fetchVodStreamsForCategoryOnline(currentList, syntheticVodCategory)
+                val seriesResult = repository.fetchSeriesForCategoryOnline(currentList, syntheticSeriesCategory)
+
+                val vodMovies = (vodResult as? VodStreamsLoadResult.Success)?.movies ?: emptyList()
+                val seriesList = (seriesResult as? SeriesLoadResult.Success)?.series ?: emptyList()
+
+                val vodItems = vodMovies.mapNotNull { movie ->
+                    val ts = normalizeRecentTimestamp(movie.added) ?: return@mapNotNull null
+                    val name = movie.name.trim()
+                    if (name.isBlank() || name.equals("null", ignoreCase = true)) return@mapNotNull null
+
+                    val rawImg = movie.streamIcon?.trim()
+                    val imageUrl = if (rawImg.isNullOrBlank() || rawImg.equals("null", ignoreCase = true)) null else rawImg
+
+                    HomeRecentItem(
+                        contentType = "VOD",
+                        contentId = movie.streamId,
+                        title = name,
+                        imageUrl = imageUrl,
+                        recentTimestamp = ts
+                    )
+                }
+
+                val seriesItems = seriesList.mapNotNull { series ->
+                    val ts = normalizeRecentTimestamp(series.lastModified ?: series.added) ?: return@mapNotNull null
+                    val name = series.name.trim()
+                    if (name.isBlank() || name.equals("null", ignoreCase = true)) return@mapNotNull null
+
+                    val rawImg = series.cover?.trim()
+                    val imageUrl = if (rawImg.isNullOrBlank() || rawImg.equals("null", ignoreCase = true)) null else rawImg
+
+                    HomeRecentItem(
+                        contentType = "SERIES",
+                        contentId = series.seriesId,
+                        title = name,
+                        imageUrl = imageUrl,
+                        recentTimestamp = ts
+                    )
+                }
+
+                val combined = (vodItems + seriesItems)
+                    .sortedByDescending { it.recentTimestamp }
+                    .take(20)
+
+                // Proteção contra troca de lista
+                val activeListId = _uiState.value.contentCategoriesState?.listId ?: _uiState.value.selectedListId
+                if (activeListId != currentList.id) {
+                    Log.d(TAG, "Resultado de 'Recentes' descartado: lista ativa mudou (${currentList.id} != $activeListId)")
+                    return@launch
+                }
+
+                _uiState.update { state ->
+                    val stateListId = state.contentCategoriesState?.listId ?: state.selectedListId
+                    if (stateListId == currentList.id) {
+                        state.copy(
+                            homeRecentItems = combined,
+                            isLoadingHomeRecent = false
+                        )
+                    } else {
+                        state
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Erro ao carregar itens de 'Recentes' da Home para listId=${currentList.id}", e)
+                _uiState.update { state ->
+                    val stateListId = state.contentCategoriesState?.listId ?: state.selectedListId
+                    if (stateListId == currentList.id) {
+                        state.copy(isLoadingHomeRecent = false)
                     } else {
                         state
                     }

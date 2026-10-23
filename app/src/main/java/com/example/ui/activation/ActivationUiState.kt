@@ -26,6 +26,17 @@ data class HomeContinueItem(
     val progressFraction: Float
 )
 
+/**
+ * Item de apresentação para o carrossel "Recentes" da Home.
+ */
+data class HomeRecentItem(
+    val contentType: String,
+    val contentId: String,
+    val title: String,
+    val imageUrl: String?,
+    val recentTimestamp: Long
+)
+
 enum class AppScreenSection {
     ACTIVATION,
     MY_LISTS,
@@ -74,5 +85,9 @@ data class ActivationUiState(
 
     // Estado do carrossel "Continuar assistindo" (Home)
     val homeContinueItems: List<HomeContinueItem> = emptyList(),
-    val isLoadingHomeContinue: Boolean = false
+    val isLoadingHomeContinue: Boolean = false,
+
+    // Estado do carrossel "Recentes" (Home)
+    val homeRecentItems: List<HomeRecentItem> = emptyList(),
+    val isLoadingHomeRecent: Boolean = false
 )
