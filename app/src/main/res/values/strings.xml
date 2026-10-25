@@ -134,4 +134,6 @@
     <string name="btn_close">Fechar</string>
     <string name="app_version">Versão</string>
     <string name="app_architecture">Arquitetura</string>
+    <string name="lbl_continue_watching">Continuar assistindo</string>
+    <string name="msg_nothing_to_continue_watching">Nada para continuar assistindo</string>
 </resources>
