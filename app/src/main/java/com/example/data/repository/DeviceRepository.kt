@@ -102,13 +102,7 @@ class DeviceRepository(
                 )
             }
             is LcAdminResponse.Error -> {
-                // Caso ocorra falha de rede/timeout, registra timestamp da tentativa
-                if (response.isNetworkOrTimeout) {
-                    identityStorage.updateStatus(
-                        status = ActivationStatus.CONNECTION_ERROR,
-                        lastCheckedAt = now
-                    )
-                }
+                // Falhas de rede/timeout são temporárias e NÃO devem sobrescrever o último status real confirmado pelo LC Admin
             }
         }
 

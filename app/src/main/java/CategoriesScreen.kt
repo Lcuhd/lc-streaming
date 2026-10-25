@@ -387,6 +387,19 @@ fun CategoriesScreen(
                 onIsFavorite = { id -> viewModel.isContentFavorite("SERIES", id) },
                 onToggleFavorite = { id -> viewModel.toggleFavorite("SERIES", id) }
             )
+        } else if (categoriesState.vodDetailsState != null && categoriesState.selectedCategoryForChannels == null) {
+            val vodDetState = categoriesState.vodDetailsState!!
+            MovieDetailsView(
+                movie = vodDetState.movie,
+                vodDetailsState = vodDetState,
+                recommendations = emptyList(),
+                onBackClick = { viewModel.closeVodDetails() },
+                onRetryClick = { viewModel.retryVodDetails() },
+                onPlayMovie = { movie -> viewModel.playVodMovie(movie) },
+                onGetMovieProgress = { movie -> viewModel.getMovieProgress(movie) },
+                onIsFavorite = { id -> viewModel.isContentFavorite("VOD", id) },
+                onToggleFavorite = { id -> viewModel.toggleFavorite("VOD", id) }
+            )
         } else if (categoriesState.selectedCategoryForChannels != null) {
             val selectedCat = categoriesState.selectedCategoryForChannels!!
             when (selectedCat.type) {
@@ -649,6 +662,13 @@ fun CategoriesScreen(
 
                                             WideHomeRecentCardItem(
                                                 item = item,
+                                                onClick = {
+                                                    val pType = if (item.contentType == "VOD") "CHANNEL" else "CATEGORY"
+                                                    val cType = if (item.contentType == "VOD") "VOD" else "SERIES"
+                                                    executeWithParentalCheck(pType, cType, item.contentId, item.title) {
+                                                        viewModel.openHomeRecentItem(item)
+                                                    }
+                                                },
                                                 modifier = cardModifier
                                             )
                                         }
@@ -829,7 +849,16 @@ fun CategoriesScreen(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     items(recentItems, key = { "${it.contentType}_${it.contentId}" }) { item ->
-                                        MobileHomeRecentCardItem(item = item)
+                                        MobileHomeRecentCardItem(
+                                            item = item,
+                                            onClick = {
+                                                val pType = if (item.contentType == "VOD") "CHANNEL" else "CATEGORY"
+                                                val cType = if (item.contentType == "VOD") "VOD" else "SERIES"
+                                                executeWithParentalCheck(pType, cType, item.contentId, item.title) {
+                                                    viewModel.openHomeRecentItem(item)
+                                                }
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -2045,13 +2074,17 @@ private fun InfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun MobileHomeRecentCardItem(item: HomeRecentItem) {
+private fun MobileHomeRecentCardItem(
+    item: HomeRecentItem,
+    onClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .width(110.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(TvCardBackground)
             .border(1.dp, TvSurfaceVariant, RoundedCornerShape(10.dp))
+            .clickable { onClick() }
             .padding(6.dp)
             .testTag("home_recent_card_${item.contentType}_${item.contentId}")
     ) {
@@ -2371,6 +2404,7 @@ private fun TvSideNavButton(
 @Composable
 private fun WideHomeRecentCardItem(
     item: HomeRecentItem,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -2383,7 +2417,7 @@ private fun WideHomeRecentCardItem(
                 shape = RoundedCornerShape(10.dp),
                 focusBorderColor = TvFocusBorder,
                 focusedScale = 1.05f,
-                onClick = {}
+                onClick = onClick
             )
             .padding(6.dp)
             .testTag("wide_home_recent_card_${item.contentType}_${item.contentId}")

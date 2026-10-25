@@ -34,7 +34,8 @@ data class HomeRecentItem(
     val contentId: String,
     val title: String,
     val imageUrl: String?,
-    val recentTimestamp: Long
+    val recentTimestamp: Long,
+    val categoryId: String
 )
 
 enum class AppScreenSection {

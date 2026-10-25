@@ -95,16 +95,57 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                     deviceId = credentials.deviceId,
                     key = credentials.key,
                     status = credentials.status,
-                    lastCheckedTimestamp = credentials.lastCheckedAt,
-                    isChecking = false
+                    lastCheckedTimestamp = credentials.lastCheckedAt
                 )
             }
 
-            // Se o aparelho já estiver ativo no banco local, carrega as listas previamente
-            if (credentials.status == ActivationStatus.ACTIVE) {
-                fetchDeviceLists(navigateToSectionIfActive = true)
+            if (credentials.deviceId.isNotBlank() && credentials.key.isNotBlank()) {
+                val response = repository.checkDeviceStatusOnline(credentials.deviceId, credentials.key)
+                when (response) {
+                    is LcAdminResponse.Success -> {
+                        _uiState.update {
+                            it.copy(
+                                status = response.activationStatus,
+                                lastCheckedTimestamp = System.currentTimeMillis(),
+                                isChecking = false
+                            )
+                        }
+                        if (response.activationStatus == ActivationStatus.ACTIVE) {
+                            fetchDeviceLists(navigateToSectionIfActive = true)
+                        } else {
+                            _uiState.update { it.copy(isResolvingStartupRoute = false) }
+                        }
+                    }
+                    is LcAdminResponse.Error -> {
+                        if (response.isNetworkOrTimeout) {
+                            _uiState.update {
+                                it.copy(
+                                    status = ActivationStatus.CONNECTION_ERROR,
+                                    isChecking = false,
+                                    isResolvingStartupRoute = false,
+                                    toastFeedback = response.displayMessage,
+                                    lastFeedbackMessage = response.displayMessage
+                                )
+                            }
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    isChecking = false,
+                                    isResolvingStartupRoute = false,
+                                    toastFeedback = response.displayMessage,
+                                    lastFeedbackMessage = response.displayMessage
+                                )
+                            }
+                        }
+                    }
+                }
             } else {
-                _uiState.update { it.copy(isResolvingStartupRoute = false) }
+                _uiState.update {
+                    it.copy(
+                        isChecking = false,
+                        isResolvingStartupRoute = false
+                    )
+                }
             }
         }
     }
@@ -1473,7 +1514,14 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                 val updatedDetailsState = when (result) {
                     is VodDetailsLoadResult.Success -> {
                         Log.i(TAG, "Detalhes VOD carregados com sucesso para '${movie.name}'")
+                        val resolvedExtension = result.details.containerExtension
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+
                         currentDetailsState.copy(
+                            movie = currentDetailsState.movie.copy(
+                                containerExtension = resolvedExtension ?: currentDetailsState.movie.containerExtension
+                            ),
                             details = result.details,
                             isLoading = false,
                             errorMessage = null
@@ -2324,7 +2372,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         contentId = movie.streamId,
                         title = name,
                         imageUrl = imageUrl,
-                        recentTimestamp = ts
+                        recentTimestamp = ts,
+                        categoryId = movie.categoryId
                     )
                 }
 
@@ -2341,7 +2390,8 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         contentId = series.seriesId,
                         title = name,
                         imageUrl = imageUrl,
-                        recentTimestamp = ts
+                        recentTimestamp = ts,
+                        categoryId = series.categoryId
                     )
                 }
 
@@ -2379,6 +2429,39 @@ class ActivationViewModel(application: Application) : AndroidViewModel(applicati
                         state
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Abre a tela de detalhes correspondente para um item selecionado na seção 'Recentes' da Home.
+     */
+    fun openHomeRecentItem(item: HomeRecentItem) {
+        val cType = item.contentType.uppercase().trim()
+        Log.i(TAG, "Abrindo detalhes a partir de Recentes da Home: tipo=$cType, title='${item.title}', contentId=${item.contentId}")
+
+        when (cType) {
+            "VOD" -> {
+                val movieModel = VodMovie(
+                    streamId = item.contentId,
+                    name = item.title,
+                    streamIcon = item.imageUrl,
+                    containerExtension = null,
+                    categoryId = item.categoryId
+                )
+                openVodDetails(movieModel)
+            }
+            "SERIES" -> {
+                val seriesModel = SeriesItem(
+                    seriesId = item.contentId,
+                    name = item.title,
+                    cover = item.imageUrl,
+                    categoryId = item.categoryId
+                )
+                openSeriesDetails(seriesModel)
+            }
+            else -> {
+                Log.w(TAG, "Tipo de conteúdo de Recentes não reconhecido: '${item.contentType}'")
             }
         }
     }
